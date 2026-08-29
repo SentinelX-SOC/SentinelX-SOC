@@ -1,5 +1,6 @@
 """Honeytoken lifecycle: deploy, trigger, and fan into the existing SOC pipeline."""
 
+import logging
 from uuid import uuid4
 
 from app.core.config import settings
@@ -31,6 +32,7 @@ from app.services.remediation_service import RemediationService
 from app.services.websocket import ConnectionManager
 
 HONEYTOKEN_CONFIDENCE: float = 0.99
+logger = logging.getLogger(__name__)
 
 
 class HoneytokenError(Exception):
@@ -89,7 +91,7 @@ class HoneytokenService:
         )
         self._tokens[token_id] = token
         self._events[token_id] = []
-        self._persist_honeytoken_safely(token)
+        self._persist_honeytoken_safely(token, insert=True)
         return HoneytokenRead.model_validate(token)
 
     def list_active(self) -> list[HoneytokenRead]:
@@ -109,7 +111,22 @@ class HoneytokenService:
     def deactivate(self, token_id: str) -> HoneytokenRead:
         token = self._require(token_id)
         token.status = HoneytokenStatus.INACTIVE
+        self._persist_honeytoken_safely(token)
         return HoneytokenRead.model_validate(token)
+
+    def hydrate_from_database(self) -> None:
+        """Load persisted honeytokens into the in-memory registry once at startup."""
+        try:
+            stored = self.repository.list_honeytokens()
+        except Exception:
+            logger.exception("Failed to hydrate honeytokens from database; continuing with in-memory registry")
+            return
+        for token in stored:
+            if token.id in self._tokens:
+                continue
+            token.extra_data = dict(token.extra_data or {})
+            self._tokens[token.id] = token
+            self._events.setdefault(token.id, [])
 
     async def trigger(
         self,
@@ -210,11 +227,15 @@ class HoneytokenService:
         self,
         honeytoken: Honeytoken,
         *,
+        insert: bool = False,
         alert: Alert | None = None,
         remediation: RemediationAction | None = None,
     ) -> None:
         try:
-            self.repository.create_honeytoken(honeytoken)
+            if insert:
+                self.repository.create_honeytoken(honeytoken)
+            else:
+                self.repository.update_honeytoken(honeytoken)
             if alert is not None:
                 self.repository.create_alert(alert)
             if remediation is not None:

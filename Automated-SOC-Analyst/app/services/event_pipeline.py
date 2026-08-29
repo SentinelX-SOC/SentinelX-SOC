@@ -4,6 +4,8 @@ Honeytoken triggers must keep using ``HoneytokenService`` (high-confidence
 local path). This pipeline is for ordinary telemetry only.
 """
 
+import logging
+
 from app.models.schemas import (
     Alert,
     AlertRead,
@@ -23,6 +25,7 @@ from app.services.remediation_service import RemediationService
 from app.services.websocket import ConnectionManager
 
 ALERT_RISK_THRESHOLD: float = 0.80
+logger = logging.getLogger(__name__)
 
 
 class EventPipeline:
@@ -146,6 +149,7 @@ class EventPipeline:
                 remediation=remediation,
             )
         except Exception:
+            logger.exception("Failed to persist pipeline result; continuing without durable state")
             return
 
     async def _broadcast(

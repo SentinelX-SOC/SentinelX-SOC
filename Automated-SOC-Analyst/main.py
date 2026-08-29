@@ -1,5 +1,8 @@
 """FastAPI entrypoint for the Autonomous SOC Threat Defense Simulator."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -11,10 +14,17 @@ from app.api.honeytokens import router as honeytoken_router
 from app.api.simulation import router as simulation_router
 from app.api.websockets import router as websocket_router
 from app.core.config import settings
-from app.core.deps import graph_service, manager, ml_service, simulation_engine
+from app.core.deps import graph_service, honeytoken_service, manager, ml_service, simulation_engine
 from app.models.schemas import HealthRead
 
-app = FastAPI(title=settings.app_name, version=settings.app_version)
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    honeytoken_service.hydrate_from_database()
+    yield
+
+
+app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
