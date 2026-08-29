@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Aegis SOC - Simulation / Red Team Control Center</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Theme Configuration -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-fixed-dim": "#adc6ff",
+                        "error": "#ffb4ab",
+                        "on-tertiary-container": "#461f00",
+                        "secondary-fixed": "#6ffbbe",
+                        "tertiary-fixed-dim": "#ffb786",
+                        "on-secondary": "#003824",
+                        "on-primary-fixed-variant": "#004395",
+                        "on-error": "#690005",
+                        "on-primary": "#002e6a",
+                        "surface-container-lowest": "#0c0e12",
+                        "on-surface": "#e2e2e8",
+                        "on-tertiary-fixed": "#311400",
+                        "on-primary-fixed": "#001a42",
+                        "secondary": "#4edea3",
+                        "on-secondary-fixed-variant": "#005236",
+                        "inverse-on-surface": "#2f3035",
+                        "surface-container": "#1e2024",
+                        "on-surface-variant": "#c2c6d6",
+                        "tertiary": "#ffb786",
+                        "outline-variant": "#424754",
+                        "inverse-primary": "#005ac2",
+                        "tertiary-container": "#df7412",
+                        "on-tertiary-fixed-variant": "#723600",
+                        "surface-tint": "#adc6ff",
+                        "outline": "#8c909f",
+                        "on-secondary-fixed": "#002113",
+                        "primary-container": "#4d8eff",
+                        "surface-container-low": "#1a1c20",
+                        "primary": "#adc6ff",
+                        "background": "#111318",
+                        "inverse-surface": "#e2e2e8",
+                        "secondary-container": "#00a572",
+                        "on-tertiary": "#502400",
+                        "secondary-fixed-dim": "#4edea3",
+                        "surface-dim": "#111318",
+                        "surface-variant": "#333539",
+                        "on-background": "#e2e2e8",
+                        "surface-container-high": "#282a2e",
+                        "surface-container-highest": "#333539",
+                        "tertiary-fixed": "#ffdcc6",
+                        "primary-fixed": "#d8e2ff",
+                        "on-primary-container": "#00285d",
+                        "on-secondary-container": "#00311f",
+                        "surface-bright": "#37393e",
+                        "on-error-container": "#ffdad6",
+                        "error-container": "#93000a",
+                        "surface": "#111318"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "sidebar-width": "240px",
+                        "unit": "4px",
+                        "table-row-height": "40px",
+                        "container-padding": "24px",
+                        "sidebar-collapsed": "64px",
+                        "element-gap": "12px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Inter"],
+                        "label-mono": ["JetBrains Mono"],
+                        "headline-lg": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "data-tabular": ["Inter"],
+                        "headline-sm": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "label-mono": ["12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+                        "headline-lg": ["30px", { "lineHeight": "36px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "body-sm": ["12px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "data-tabular": ["13px", { "lineHeight": "16px", "fontWeight": "500" }],
+                        "headline-sm": ["18px", { "lineHeight": "24px", "fontWeight": "600" }]
+                    }
+                },
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: theme('colors.background');
+            color: theme('colors.on-background');
+        }
+        
+        .glass-panel {
+            background: rgba(30, 32, 36, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid theme('colors.outline-variant');
+        }
+        
+        .sim-banner {
+            background: repeating-linear-gradient(
+                45deg,
+                rgba(223, 116, 18, 0.1),
+                rgba(223, 116, 18, 0.1) 10px,
+                rgba(0, 0, 0, 0) 10px,
+                rgba(0, 0, 0, 0) 20px
+            );
+            border-bottom: 2px solid theme('colors.tertiary-container');
+        }
+
+        /* Custom Scrollbar for Logs */
+        .log-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        .log-container::-webkit-scrollbar-track {
+            background: theme('colors.surface-container');
+        }
+        .log-container::-webkit-scrollbar-thumb {
+            background: theme('colors.outline-variant');
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden font-body-md text-body-md">
+<!-- Top Navigation Bar -->
+<nav class="flex justify-between items-center w-full px-container-padding h-14 bg-surface dark:bg-surface border-b border-outline-variant dark:border-outline-variant fixed top-0 z-50">
+<div class="flex items-center gap-element-gap">
+<span class="font-headline-md text-headline-md font-bold text-primary dark:text-primary tracking-tight">Aegis SOC</span>
+</div>
+<div class="flex-1 max-w-xl mx-8 relative hidden md:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
+<input class="w-full bg-surface-container-high border-none rounded text-on-surface focus:ring-1 focus:ring-primary pl-9 py-1.5 font-body-sm text-body-sm h-8" placeholder="Search resources, IP, or alerts..." type="text"/>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-on-surface-variant hover:bg-surface-container-high transition-colors p-1.5 rounded-full flex items-center justify-center h-8 w-8">
+<span class="material-symbols-outlined text-[20px]" data-icon="hub">hub</span>
+</button>
+<button class="text-on-surface-variant hover:bg-surface-container-high transition-colors p-1.5 rounded-full flex items-center justify-center h-8 w-8">
+<span class="material-symbols-outlined text-[20px]" data-icon="monitor_heart">monitor_heart</span>
+</button>
+<button class="text-on-surface-variant hover:bg-surface-container-high transition-colors p-1.5 rounded-full flex items-center justify-center h-8 w-8">
+<span class="material-symbols-outlined text-[20px]" data-icon="settings">settings</span>
+</button>
+<div class="h-8 w-8 rounded-full overflow-hidden border border-outline-variant ml-2">
+<img alt="Analyst profile avatar" class="w-full h-full object-cover" data-alt="A highly detailed close up of a futuristic sleek analyst profile avatar icon, glowing subtle blue edges, high tech aesthetic, minimal background, extremely sharp focus, 8k resolution, photorealistic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCULDopiOfT6G9EjO-30fk-lnfeafJW-Ebg-5CGQ5eL42iu7izyFbvFlkLrty20fzrCZkUgGhjaOtpfy-v_o3RTMxPweqpI7khTT4uxy4w6eH6piMmQ6rYRzv1YO4EBWtonsMov55eLioH-WCDERmw8vxr4QpYEseEPU6ktueQJOqvxT7QZSG8w4lkJB5SJK_-jjoGblW0MH6cJKeDpWBN6UrHXw4_ATGHauegApcLRJUII1XAO-gSm9Q"/>
+</div>
+</div>
+</nav>
+<!-- Main App Container -->
+<div class="flex h-full w-full pt-14">
+<!-- Side Navigation -->
+<aside class="fixed left-0 top-14 h-[calc(100vh-3.5rem)] w-sidebar-width bg-surface-container dark:bg-surface-container border-r border-outline-variant flex flex-col z-40 transition-all duration-150 ease-in-out hidden md:flex">
+<div class="p-4 border-b border-outline-variant flex items-center gap-3">
+<div class="w-10 h-10 rounded border border-outline-variant overflow-hidden shrink-0 bg-surface-container-highest">
+<img alt="SOC Environment Logo" class="w-full h-full object-cover" data-alt="A highly detailed, stylized geometric logo representing a secure environment or globe, cool blue and dark grey tones, sharp vector style illustration, metallic finish, against a dark void background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCDJ_CTJ_WLbS1NNU5p-EXbfdb1FQACBBmEvlJkNcZTTwiAHGF61aeRHY2tsHTtgu1uuUXPPq1xtIZ66k6j6J4YtsvrGAN1GbjDP4TbhUR4WL7MYPpi_FdvxNrSM-uSPW5nuZhSa0hKxhD_Fa-8mGRKs6NRa0o2QMXKWxavahjvxiYOWSquT6wSO2CJLoz3miqgq2AHangXcJXLN_kqdPPb_Bw_IawQ5mTXu2N9pIIZsYvfnj9d-pbd2A"/>
+</div>
+<div class="overflow-hidden">
+<h2 class="font-headline-sm text-headline-sm font-black text-on-surface truncate">Global Ops</h2>
+<p class="font-label-mono text-label-mono text-on-surface-variant truncate">Production Environment</p>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto py-4">
+<nav class="space-y-1 px-2">
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="dashboard">dashboard</span>
+<span class="font-body-md text-body-md">Overview</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="analytics">analytics</span>
+<span class="font-body-md text-body-md">Telemetry</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="emergency_home">emergency_home</span>
+<span class="font-body-md text-body-md">Alerts</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="search_insights">search_insights</span>
+<span class="font-body-md text-body-md">Investigations</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="account_tree">account_tree</span>
+<span class="font-body-md text-body-md">Attack Graph</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="toll">toll</span>
+<span class="font-body-md text-body-md">Honeytokens</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="build_circle">build_circle</span>
+<span class="font-body-md text-body-md">Remediation</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-primary bg-primary-container/10 border-l-2 border-primary transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="science">science</span>
+<span class="font-body-md text-body-md font-medium">Simulation</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="health_and_safety">health_and_safety</span>
+<span class="font-body-md text-body-md">System Health</span>
+</a>
+</nav>
+</div>
+<div class="p-4 border-t border-outline-variant space-y-1">
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="help">help</span>
+<span class="font-body-md text-body-md">Support</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="settings">settings</span>
+<span class="font-body-md text-body-md">Settings</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 md:ml-sidebar-width overflow-y-auto bg-surface-dim relative">
+<!-- Global Simulation Banner -->
+<div class="w-full sim-banner h-10 flex items-center justify-center px-container-padding sticky top-0 z-30 shadow-md">
+<div class="flex items-center gap-2 text-tertiary-container font-label-mono text-label-mono font-bold tracking-widest uppercase bg-surface-dim/80 px-4 py-1 rounded backdrop-blur-sm border border-tertiary-container/30">
+<span class="material-symbols-outlined text-sm" data-icon="warning">warning</span>
+                    SIMULATED ACTIVITY ZONE - ISOLATED ENVIRONMENT
+                    <span class="material-symbols-outlined text-sm" data-icon="warning">warning</span>
+</div>
+</div>
+<div class="p-container-padding max-w-[1600px] mx-auto space-y-6">
+<!-- Page Header -->
+<header class="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-4 border-b border-outline-variant">
+<div>
+<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight">Red Team Simulation Environment</h1>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1">Safely execute adversarial scenarios to validate detection logic and response playbooks.</p>
+</div>
+<div class="flex items-center gap-3">
+<div class="flex items-center gap-2 bg-surface-container px-3 py-1.5 rounded border border-outline-variant">
+<span class="relative flex h-2.5 w-2.5">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-secondary"></span>
+</span>
+<span class="font-label-mono text-label-mono text-on-surface">Range: Active</span>
+</div>
+<button class="bg-surface-container hover:bg-surface-container-high border border-outline-variant text-on-surface px-4 py-1.5 rounded transition-colors font-body-sm text-body-sm flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">history</span>
+                            History
+                        </button>
+</div>
+</header>
+<!-- Bento Grid Layout -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+<!-- Left Column: Control Panel (Span 4) -->
+<div class="lg:col-span-4 space-y-6">
+<!-- Scenario Selection Card -->
+<div class="glass-panel rounded-lg p-5 flex flex-col h-full shadow-[0_4px_6px_-1px_rgba(0,0,0,0.3)]">
+<div class="flex items-center justify-between mb-4 pb-2 border-b border-outline-variant">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Scenario Control</h3>
+<span class="material-symbols-outlined text-on-surface-variant">tune</span>
+</div>
+<div class="space-y-4 flex-1">
+<div>
+<label class="block font-label-mono text-label-mono text-on-surface-variant mb-1.5">Select Adversary Profile</label>
+<select class="w-full bg-surface-container-low border border-outline-variant rounded px-3 py-2 text-on-surface focus:ring-1 focus:ring-primary focus:border-primary font-body-sm text-body-sm">
+<option>APT29 (Cozy Bear) - Stealth</option>
+<option>FIN7 - Ransomware Prep</option>
+<option>Insider Threat - Data Exfil</option>
+<option>Generic: Initial Access</option>
+</select>
+</div>
+<div>
+<label class="block font-label-mono text-label-mono text-on-surface-variant mb-1.5">Scenario Focus</label>
+<div class="space-y-2">
+<label class="flex items-center p-3 border border-primary/50 bg-primary-container/5 rounded cursor-pointer hover:bg-primary-container/10 transition-colors">
+<input checked="" class="text-primary bg-surface border-outline-variant focus:ring-primary h-4 w-4" name="scenario" type="radio"/>
+<div class="ml-3">
+<span class="block font-body-sm text-body-sm text-on-surface font-medium">Lateral Movement</span>
+<span class="block font-label-mono text-[10px] text-on-surface-variant mt-0.5">SMB Exec, WMI, RDP</span>
+</div>
+</label>
+<label class="flex items-center p-3 border border-outline-variant bg-surface-container-low rounded cursor-pointer hover:bg-surface-container transition-colors">
+<input class="text-primary bg-surface border-outline-variant focus:ring-primary h-4 w-4" name="scenario" type="radio"/>
+<div class="ml-3">
+<span class="block font-body-sm text-body-sm text-on-surface font-medium">Data Exfiltration</span>
+<span class="block font-label-mono text-[10px] text-on-surface-variant mt-0.5">DNS Tunneling, MegaSync</span>
+</div>
+</label>
+<label class="flex items-center p-3 border border-outline-variant bg-surface-container-low rounded cursor-pointer hover:bg-surface-container transition-colors">
+<input class="text-primary bg-surface border-outline-variant focus:ring-primary h-4 w-4" name="scenario" type="radio"/>
+<div class="ml-3">
+<span class="block font-body-sm text-body-sm text-on-surface font-medium">Credential Harvesting</span>
+<span class="block font-label-mono text-[10px] text-on-surface-variant mt-0.5">LSASS Dump, Kerberoasting</span>
+</div>
+</label>
+</div>
+</div>
+<div class="pt-4 mt-auto">
+<label class="flex items-center gap-2 mb-4">
+<input class="rounded text-primary bg-surface border-outline-variant focus:ring-primary h-4 w-4" type="checkbox"/>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Enable automated remediation (SOAR test)</span>
+</label>
+<div class="grid grid-cols-2 gap-3">
+<button class="bg-error-container hover:bg-error-container/80 text-on-error-container font-body-md text-body-md font-medium py-2 rounded transition-colors border border-error/20 flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[18px]">stop_circle</span>
+                                            Stop
+                                        </button>
+<button class="bg-primary hover:bg-primary-fixed text-on-primary font-body-md text-body-md font-medium py-2 rounded transition-colors shadow-[0_0_15px_rgba(77,142,255,0.2)] flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[18px]">play_circle</span>
+                                            Start Sim
+                                        </button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Column: Monitoring & Telemetry (Span 8) -->
+<div class="lg:col-span-8 flex flex-col gap-6">
+<!-- Top Row: Metrics -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<div class="bg-surface-container p-4 rounded-lg border border-outline-variant">
+<span class="font-label-mono text-[11px] text-on-surface-variant uppercase tracking-wider">Simulated Anomalies Detected</span>
+<div class="mt-2 flex items-end gap-3">
+<span class="font-headline-lg text-headline-lg text-tertiary">142</span>
+<span class="font-body-sm text-body-sm text-secondary mb-1 flex items-center"><span class="material-symbols-outlined text-[14px]">arrow_upward</span> 12%</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1 mt-3 rounded overflow-hidden">
+<div class="bg-tertiary h-full" style="width: 65%"></div>
+</div>
+</div>
+<div class="bg-surface-container p-4 rounded-lg border border-outline-variant">
+<span class="font-label-mono text-[11px] text-on-surface-variant uppercase tracking-wider">Remediation Response Time</span>
+<div class="mt-2 flex items-end gap-3">
+<span class="font-headline-lg text-headline-lg text-on-surface">4m 12s</span>
+<span class="font-body-sm text-body-sm text-secondary mb-1 flex items-center"><span class="material-symbols-outlined text-[14px]">arrow_downward</span> 30s</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1 mt-3 rounded overflow-hidden">
+<div class="bg-primary h-full" style="width: 40%"></div>
+</div>
+</div>
+<div class="bg-surface-container p-4 rounded-lg border border-outline-variant relative overflow-hidden">
+<div class="absolute inset-0 opacity-10 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-error to-transparent"></div>
+<span class="font-label-mono text-[11px] text-on-surface-variant uppercase tracking-wider relative z-10">Detection Coverage (MITRE)</span>
+<div class="mt-2 flex items-end gap-3 relative z-10">
+<span class="font-headline-lg text-headline-lg text-on-surface">86%</span>
+</div>
+<div class="mt-2 flex gap-1 relative z-10">
+<div class="h-1.5 flex-1 bg-secondary rounded-sm"></div>
+<div class="h-1.5 flex-1 bg-secondary rounded-sm"></div>
+<div class="h-1.5 flex-1 bg-secondary rounded-sm"></div>
+<div class="h-1.5 flex-1 bg-secondary rounded-sm"></div>
+<div class="h-1.5 flex-1 bg-surface-container-highest rounded-sm"></div>
+</div>
+</div>
+</div>
+<!-- Main Visualization/Log Area -->
+<div class="glass-panel rounded-lg flex flex-col flex-1 min-h-[400px]">
+<div class="flex items-center justify-between p-4 border-b border-outline-variant bg-surface-container-low/50 rounded-t-lg">
+<div class="flex items-center gap-3">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Generated Activity Stream</h3>
+<div class="px-2 py-0.5 rounded text-[10px] font-label-mono bg-tertiary-container/20 text-tertiary border border-tertiary/30">
+                                        SIMULATION ACTIVE
+                                    </div>
+</div>
+<div class="flex gap-2">
+<button class="p-1 rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface"><span class="material-symbols-outlined text-[18px]">filter_list</span></button>
+<button class="p-1 rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface"><span class="material-symbols-outlined text-[18px]">more_vert</span></button>
+</div>
+</div>
+<!-- Activity Logs (Data Table style) -->
+<div class="flex-1 overflow-auto log-container p-2 font-data-tabular text-data-tabular">
+<table class="w-full text-left border-collapse">
+<thead class="sticky top-0 bg-surface-container-low z-10 text-on-surface-variant font-label-mono text-label-mono">
+<tr>
+<th class="p-2 font-medium">Timestamp</th>
+<th class="p-2 font-medium">Event Type</th>
+<th class="p-2 font-medium">Source / Asset</th>
+<th class="p-2 font-medium">Status / Action</th>
+</tr>
+</thead>
+<tbody class="text-on-surface">
+<!-- Row 1 -->
+<tr class="border-b border-outline-variant/30 hover:bg-surface-container-high/50 group">
+<td class="p-2 text-on-surface-variant">14:02:11.432</td>
+<td class="p-2"><span class="text-error">T1059.001 - PowerShell</span></td>
+<td class="p-2">wkstn-bld-04 <span class="text-on-surface-variant text-[11px] ml-1">10.0.4.22</span></td>
+<td class="p-2"><span class="px-2 py-0.5 rounded-sm bg-secondary/10 text-secondary border border-secondary/20 text-[11px]">Blocked (EDR)</span></td>
+</tr>
+<!-- Row 2 (Active/Highlight) -->
+<tr class="border-b border-outline-variant/30 bg-surface-container-high/50 border-l-2 border-l-primary group">
+<td class="p-2 text-on-surface-variant">14:02:15.891</td>
+<td class="p-2"><span class="text-tertiary">T1021.002 - SMB/Windows Admin Shares</span></td>
+<td class="p-2">srv-db-01 <span class="text-on-surface-variant text-[11px] ml-1">10.0.1.15</span></td>
+<td class="p-2"><span class="px-2 py-0.5 rounded-sm bg-surface-container-highest text-on-surface border border-outline-variant text-[11px] flex w-fit items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse"></span> Alerting</span></td>
+</tr>
+<!-- Row 3 -->
+<tr class="border-b border-outline-variant/30 hover:bg-surface-container-high/50 group">
+<td class="p-2 text-on-surface-variant">14:02:16.002</td>
+<td class="p-2">Network Connection (445)</td>
+<td class="p-2">wkstn-bld-04 → srv-db-01</td>
+<td class="p-2"><span class="text-on-surface-variant">Logged</span></td>
+</tr>
+<!-- Row 4 -->
+<tr class="border-b border-outline-variant/30 hover:bg-surface-container-high/50 group">
+<td class="p-2 text-on-surface-variant">14:02:22.110</td>
+<td class="p-2"><span class="text-tertiary">T1003.001 - LSASS Memory</span></td>
+<td class="p-2">srv-db-01 <span class="text-on-surface-variant text-[11px] ml-1">10.0.1.15</span></td>
+<td class="p-2"><span class="px-2 py-0.5 rounded-sm bg-surface-container-highest text-on-surface border border-outline-variant text-[11px] flex w-fit items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse"></span> Analyzing</span></td>
+</tr>
+<!-- Row 5 -->
+<tr class="border-b border-outline-variant/30 hover:bg-surface-container-high/50 group opacity-70">
+<td class="p-2 text-on-surface-variant">14:01:50.000</td>
+<td class="p-2">Process Create (cmd.exe)</td>
+<td class="p-2">wkstn-bld-04</td>
+<td class="p-2"><span class="text-on-surface-variant">Logged</span></td>
+</tr>
+<!-- Row 6 -->
+<tr class="hover:bg-surface-container-high/50 group opacity-70">
+<td class="p-2 text-on-surface-variant">14:01:45.332</td>
+<td class="p-2">Authentication (Success)</td>
+<td class="p-2">usr_svc_backup</td>
+<td class="p-2"><span class="text-on-surface-variant">Logged</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

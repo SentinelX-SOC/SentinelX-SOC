@@ -1,0 +1,98 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg: #111318;
+  --bg-strong: #0c0e12;
+  --surface: #111318;
+  --surface-container: #1e2024;
+  --surface-container-low: #1a1c20;
+  --surface-container-high: #282a2e;
+  --surface-container-highest: #333539;
+  --surface-variant: #333539;
+  --on-surface: #e2e2e8;
+  --on-surface-variant: #c2c6d6;
+  --outline: #8c909f;
+  --outline-variant: #424754;
+  --primary: #adc6ff;
+  --primary-container: rgba(173, 198, 255, 0.12);
+  --secondary: #4edea3;
+  --secondary-container: rgba(78, 222, 163, 0.12);
+  --tertiary: #ffb786;
+  --warning: #fbbf24;
+  --error: #ffb4ab;
+  --error-container: rgba(255, 180, 171, 0.12);
+  --shadow-soft: 0 10px 24px rgba(15, 17, 22, 0.28);
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --sidebar-width: 240px;
+  --container-padding: 24px;
+  --element-gap: 12px;
+  --table-row-height: 40px;
+  --panel-border: 1px solid rgba(140, 144, 159, 0.26);
+
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--on-surface);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  min-height: 100%;
+  width: 100%;
+  background: var(--bg);
+}
+
+body {
+  min-height: 100vh;
+  overflow-x: hidden;
+  background: radial-gradient(circle at top, rgba(70, 90, 140, 0.2), transparent 30%), var(--bg);
+  color: var(--on-surface);
+}
+
+button, input, select {
+  font: inherit;
+}
+
+button {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+input, select {
+  color: var(--on-surface);
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+p {
+  margin: 0;
+}
+
+h1, h2, h3, h4 {
+  margin: 0;
+  color: var(--on-surface);
+}
+
+strong {
+  color: var(--on-surface);
+}
+
+.mono {
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+}

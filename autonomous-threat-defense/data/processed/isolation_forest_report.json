@@ -1,0 +1,63 @@
+{
+  "rows": 30000,
+  "entities": 600,
+  "feature_columns_used": [
+    "total_auth_events",
+    "successful_auth_count",
+    "failed_auth_count",
+    "unique_source_computers",
+    "unique_destination_computers",
+    "new_destination_count",
+    "unique_users",
+    "new_edge_count",
+    "outgoing_degree",
+    "incoming_degree",
+    "event_rate"
+  ],
+  "training_rows": 17805,
+  "validation_rows": 5846,
+  "test_rows": 6349,
+  "training_timestamp_range": [
+    1,
+    15901
+  ],
+  "validation_timestamp_range": [
+    16201,
+    21301
+  ],
+  "test_timestamp_range": [
+    21601,
+    27001
+  ],
+  "redteam_events_evaluated": 5,
+  "redteam_evaluation_rows": 120,
+  "redteam_events_detected": 2,
+  "detection_rate": 0.4,
+  "overall_test_anomaly_rate": 0.07623247755552055,
+  "false_positive_proxy": 0.07623247755552055,
+  "false_positive_proxy_note": "Test rows are unlabeled; anomaly rate is reported as a proxy, not a confirmed false-positive rate.",
+  "threshold": 0.5344558677215262,
+  "model_parameters": {
+    "n_estimators": 200,
+    "contamination": "auto",
+    "random_state": 42,
+    "n_jobs": 1
+  },
+  "evaluation_context": {
+    "timestamp_range": [
+      150585,
+      154092
+    ],
+    "context_seconds": 300,
+    "entities": 10,
+    "auth_rows": 663254,
+    "subset_note": "Representative first five red-team events at five-minute resolution; hackathon evaluation subset."
+  },
+  "runtime_seconds": 66.317,
+  "limitations": [
+    "The model is trained on the existing 30,000-row chronological subset.",
+    "The attack evaluation uses five red-team events and bounded authentication context.",
+    "The gzip reader scans only the prefix through the bounded evaluation end timestamp."
+  ],
+  "artifact_path": "D:\\Hackathons\\SOC Analyst\\autonomous-threat-defense\\data\\processed\\isolation_forest.joblib"
+}

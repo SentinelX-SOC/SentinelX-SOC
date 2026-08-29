@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Aegis SOC - Alerts</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-fixed-dim": "#adc6ff",
+                        "error": "#ffb4ab",
+                        "on-tertiary-container": "#461f00",
+                        "secondary-fixed": "#6ffbbe",
+                        "tertiary-fixed-dim": "#ffb786",
+                        "on-secondary": "#003824",
+                        "on-primary-fixed-variant": "#004395",
+                        "on-error": "#690005",
+                        "on-primary": "#002e6a",
+                        "surface-container-lowest": "#0c0e12",
+                        "on-surface": "#e2e2e8",
+                        "on-tertiary-fixed": "#311400",
+                        "on-primary-fixed": "#001a42",
+                        "secondary": "#4edea3",
+                        "on-secondary-fixed-variant": "#005236",
+                        "inverse-on-surface": "#2f3035",
+                        "surface-container": "#1e2024",
+                        "on-surface-variant": "#c2c6d6",
+                        "tertiary": "#ffb786",
+                        "outline-variant": "#424754",
+                        "inverse-primary": "#005ac2",
+                        "tertiary-container": "#df7412",
+                        "on-tertiary-fixed-variant": "#723600",
+                        "surface-tint": "#adc6ff",
+                        "outline": "#8c909f",
+                        "on-secondary-fixed": "#002113",
+                        "primary-container": "#4d8eff",
+                        "surface-container-low": "#1a1c20",
+                        "primary": "#adc6ff",
+                        "background": "#111318",
+                        "inverse-surface": "#e2e2e8",
+                        "secondary-container": "#00a572",
+                        "on-tertiary": "#502400",
+                        "secondary-fixed-dim": "#4edea3",
+                        "surface-dim": "#111318",
+                        "surface-variant": "#333539",
+                        "on-background": "#e2e2e8",
+                        "surface-container-high": "#282a2e",
+                        "surface-container-highest": "#333539",
+                        "tertiary-fixed": "#ffdcc6",
+                        "primary-fixed": "#d8e2ff",
+                        "on-primary-container": "#00285d",
+                        "on-secondary-container": "#00311f",
+                        "surface-bright": "#37393e",
+                        "on-error-container": "#ffdad6",
+                        "error-container": "#93000a",
+                        "surface": "#111318"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "sidebar-width": "240px",
+                        "unit": "4px",
+                        "table-row-height": "40px",
+                        "container-padding": "24px",
+                        "sidebar-collapsed": "64px",
+                        "element-gap": "12px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Inter"],
+                        "label-mono": ["JetBrains Mono"],
+                        "headline-lg": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "data-tabular": ["Inter"],
+                        "headline-sm": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "label-mono": ["12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+                        "headline-lg": ["30px", { "lineHeight": "36px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "body-sm": ["12px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "data-tabular": ["13px", { "lineHeight": "16px", "fontWeight": "500" }],
+                        "headline-sm": ["18px", { "lineHeight": "24px", "fontWeight": "600" }]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom Scrollbar for dense tables/drawers */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #111318; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #424754; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #8c909f; 
+        }
+
+        /* Drawer Animation */
+        .drawer-slide-in {
+            animation: slideInRight 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+        .drawer-slide-out {
+            animation: slideOutRight 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+        @keyframes slideInRight {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+        @keyframes slideOutRight {
+            from { transform: translateX(0); }
+            to { transform: translateX(100%); }
+        }
+        
+        /* Glassmorphism for Drawer */
+        .glass-drawer {
+            background: rgba(17, 24, 39, 0.85); /* surface / level 1 equivalent */
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md overflow-hidden antialiased">
+<!-- TopNavBar -->
+<header class="flex justify-between items-center w-full px-container-padding h-14 bg-surface border-b border-outline-variant fixed top-0 z-50">
+<div class="flex items-center gap-4">
+<!-- Mobile Menu Toggle (hidden md) -->
+<button class="md:hidden text-primary">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<div class="font-headline-md text-headline-md font-bold text-primary">Aegis SOC</div>
+<div class="hidden md:flex items-center bg-surface-container-high rounded-full px-4 py-1 ml-4 border border-outline-variant">
+<span class="material-symbols-outlined text-on-surface-variant text-sm mr-2" data-icon="search" data-weight="fill">search</span>
+<input class="bg-transparent border-none text-body-sm focus:ring-0 text-on-surface w-64 placeholder-on-surface-variant" placeholder="Search entity, alert ID, IP..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4 text-primary">
+<button class="hover:bg-surface-container-high transition-colors p-2 rounded-full"><span class="material-symbols-outlined" data-icon="hub">hub</span></button>
+<button class="hover:bg-surface-container-high transition-colors p-2 rounded-full"><span class="material-symbols-outlined" data-icon="monitor_heart">monitor_heart</span></button>
+<button class="hover:bg-surface-container-high transition-colors p-2 rounded-full"><span class="material-symbols-outlined" data-icon="settings">settings</span></button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant ml-2">
+<img class="object-cover w-full h-full" data-alt="A highly detailed close up of a futuristic holographic avatar for a security analyst. The portrait is constructed of glowing blue digital data points in a dark void. Corporate, high tech aesthetic. Studio lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAm-m2f7IzGhOfsi2PK0sIFDJ25cAyCL0xDJjf6l4GMS8PMviZFlMeiO9eEm8fhfeYPXqKdpaxVt3G3H7wWzP8_rX8NiaeK-ycVtACxVnfxgCP7u8qlsrqIrCl1cQdy25HSipTB1I5OxSWnScAu2oK5tIpDve7VT1NhPrxUH8s2cTE0HhGMgkZq08xG3jm43D8wJIo9axvOQXVSIwS7sFK0jPGfpIKvCRk6CH2hEMH7VfDtoIQEHgUuJw"/>
+</div>
+</div>
+</header>
+<!-- App Layout Container -->
+<div class="flex h-screen pt-14">
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col z-40 bg-surface-container w-sidebar-width h-full border-r border-outline-variant fixed left-0 top-14">
+<!-- Global Ops Header -->
+<div class="p-4 border-b border-outline-variant flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-primary-container/20 flex items-center justify-center text-primary border border-primary/30">
+<span class="material-symbols-outlined" data-icon="shield">shield</span>
+</div>
+<div>
+<div class="font-headline-sm text-headline-sm font-black text-on-surface">Global Ops</div>
+<div class="text-label-mono font-label-mono text-on-surface-variant text-[10px] uppercase">Production Environment</div>
+</div>
+</div>
+<!-- Nav Links -->
+<div class="flex-1 overflow-y-auto py-4">
+<ul class="space-y-1 px-2 font-body-md text-body-md">
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface Transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="dashboard">dashboard</span>
+                            Overview
+                        </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface Transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="analytics">analytics</span>
+                            Telemetry
+                        </a>
+</li>
+<li>
+<!-- ACTIVE TAB -->
+<a class="flex items-center gap-3 px-3 py-2 rounded text-primary bg-primary-container/10 border-l-2 border-primary Transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="emergency_home" data-weight="fill" style="font-variation-settings: 'FILL' 1;">emergency_home</span>
+                            Alerts
+                        </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface Transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="search_insights">search_insights</span>
+                            Investigations
+                        </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface Transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="account_tree">account_tree</span>
+                            Attack Graph
+                        </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface Transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="toll">toll</span>
+                            Honeytokens
+                        </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface Transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="build_circle">build_circle</span>
+                            Remediation
+                        </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface Transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="science">science</span>
+                            Simulation
+                        </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface Transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="health_and_safety">health_and_safety</span>
+                            System Health
+                        </a>
+</li>
+</ul>
+</div>
+<!-- Footer Links -->
+<div class="p-4 border-t border-outline-variant">
+<ul class="space-y-1 font-body-md text-body-md">
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface Transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="help">help</span>
+                            Support
+                        </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface Transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="settings">settings</span>
+                            Settings
+                        </a>
+</li>
+</ul>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="flex-1 md:ml-[240px] flex flex-col h-full overflow-hidden bg-background relative">
+<!-- Filter Bar -->
+<div class="h-16 border-b border-outline-variant bg-surface-container-low flex items-center px-container-padding gap-4 flex-shrink-0">
+<div class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 mr-4">
+<span class="material-symbols-outlined text-primary">filter_alt</span>
+                    Filters
+                </div>
+<!-- Severity Filter -->
+<select class="bg-surface border border-outline-variant text-body-sm rounded px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-on-surface">
+<option value="all">Severity: All</option>
+<option value="critical">Critical</option>
+<option value="high">High</option>
+<option value="medium">Medium</option>
+<option value="low">Low</option>
+<option value="info">Info</option>
+</select>
+<!-- Status Filter -->
+<select class="bg-surface border border-outline-variant text-body-sm rounded px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-on-surface">
+<option value="all">Status: All Active</option>
+<option value="new">New</option>
+<option value="triaging">Triaging</option>
+<option value="resolved">Resolved</option>
+</select>
+<!-- Risk Range (Mockup of slider/range) -->
+<div class="flex items-center gap-2 bg-surface border border-outline-variant rounded px-3 py-1.5">
+<span class="text-body-sm text-on-surface-variant">Risk Range:</span>
+<input class="w-12 bg-transparent border-none p-0 text-center text-body-sm text-on-surface focus:ring-0" type="number" value="70"/>
+<span class="text-on-surface-variant">-</span>
+<input class="w-12 bg-transparent border-none p-0 text-center text-body-sm text-on-surface focus:ring-0" type="number" value="100"/>
+</div>
+<!-- Time Range -->
+<select class="bg-surface border border-outline-variant text-body-sm rounded px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary text-on-surface">
+<option value="1h">Last 1 Hour</option>
+<option value="24h">Last 24 Hours</option>
+<option value="7d">Last 7 Days</option>
+<option value="custom">Custom Range...</option>
+</select>
+<div class="flex-1"></div>
+<button class="text-body-sm text-primary hover:text-primary-container flex items-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-sm">refresh</span>
+                    Refresh (Live)
+                </button>
+</div>
+<!-- Data Table Area -->
+<div class="flex-1 overflow-auto p-container-padding bg-background">
+<table class="w-full text-left border-collapse">
+<thead class="sticky top-0 bg-surface-container border-b border-outline-variant z-10">
+<tr class="font-label-mono text-label-mono text-on-surface-variant uppercase tracking-wider">
+<th class="py-3 px-4 font-medium">Alert ID</th>
+<th class="py-3 px-4 font-medium">Severity</th>
+<th class="py-3 px-4 font-medium">Risk Score</th>
+<th class="py-3 px-4 font-medium">Timestamp (UTC)</th>
+<th class="py-3 px-4 font-medium">Source Entity</th>
+<th class="py-3 px-4 font-medium">Detection Reason</th>
+<th class="py-3 px-4 font-medium">Analyst Status</th>
+</tr>
+</thead>
+<tbody class="font-data-tabular text-data-tabular">
+<!-- Row 1: Critical, Selected -->
+<tr class="h-table-row-height border-b border-outline-variant/50 hover:bg-[#1f2937] transition-colors cursor-pointer bg-surface-container-high border-l-2 border-l-primary" onclick="toggleDrawer(true)">
+<td class="py-2 px-4 text-primary font-mono">ALG-2049-CR</td>
+<td class="py-2 px-4">
+<div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-error/10 text-error border border-error/20">
+<div class="w-1.5 h-1.5 rounded-full bg-error"></div>
+<span class="font-label-mono text-[10px] uppercase">Critical</span>
+</div>
+</td>
+<td class="py-2 px-4">
+<div class="font-bold text-error">94</div>
+</td>
+<td class="py-2 px-4 text-on-surface-variant">2023-10-27 08:14:02</td>
+<td class="py-2 px-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-on-surface-variant text-sm">desktop_windows</span>
+<span>srv-db-prod-eu-west</span>
+</div>
+</td>
+<td class="py-2 px-4 truncate max-w-[200px]" title="Multiple failed SSH logins followed by anomalous outbound data transfer">Multiple failed SSH logins followed by anom...</td>
+<td class="py-2 px-4">
+<span class="px-2 py-0.5 rounded text-xs bg-tertiary-container/20 text-tertiary-container border border-tertiary-container/30">Triaging</span>
+</td>
+</tr>
+<!-- Row 2: High -->
+<tr class="h-table-row-height border-b border-outline-variant/50 hover:bg-[#1f2937] transition-colors cursor-pointer border-l-2 border-l-transparent" onclick="toggleDrawer(true)">
+<td class="py-2 px-4 text-on-surface font-mono">ALG-2048-HI</td>
+<td class="py-2 px-4">
+<div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-tertiary/10 text-tertiary border border-tertiary/20">
+<div class="w-1.5 h-1.5 rounded-full bg-tertiary"></div>
+<span class="font-label-mono text-[10px] uppercase">High</span>
+</div>
+</td>
+<td class="py-2 px-4">
+<div class="font-semibold text-tertiary">78</div>
+</td>
+<td class="py-2 px-4 text-on-surface-variant">2023-10-27 07:55:12</td>
+<td class="py-2 px-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-on-surface-variant text-sm">person</span>
+<span>j.doe@corp.local</span>
+</div>
+</td>
+<td class="py-2 px-4 truncate max-w-[200px]">Impossible travel detected (NYC -&gt; TYO in 2hrs)</td>
+<td class="py-2 px-4">
+<span class="px-2 py-0.5 rounded text-xs bg-surface-bright text-on-surface-variant border border-outline-variant">New</span>
+</td>
+</tr>
+<!-- Row 3: Medium -->
+<tr class="h-table-row-height border-b border-outline-variant/50 hover:bg-[#1f2937] transition-colors cursor-pointer border-l-2 border-l-transparent" onclick="toggleDrawer(true)">
+<td class="py-2 px-4 text-on-surface font-mono">ALG-2047-MD</td>
+<td class="py-2 px-4">
+<div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-secondary/10 text-secondary border border-secondary/20">
+<div class="w-1.5 h-1.5 rounded-full bg-secondary"></div>
+<span class="font-label-mono text-[10px] uppercase">Medium</span>
+</div>
+</td>
+<td class="py-2 px-4">
+<div class="font-semibold text-secondary">45</div>
+</td>
+<td class="py-2 px-4 text-on-surface-variant">2023-10-27 06:22:45</td>
+<td class="py-2 px-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-on-surface-variant text-sm">api</span>
+<span>auth-service-v2</span>
+</div>
+</td>
+<td class="py-2 px-4 truncate max-w-[200px]">Unusual rate of API 401 Unauthorized responses</td>
+<td class="py-2 px-4">
+<span class="px-2 py-0.5 rounded text-xs bg-surface-bright text-on-surface-variant border border-outline-variant">New</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Investigation Drawer (Initially Hidden) -->
+<aside class="hidden absolute right-0 top-16 bottom-0 w-full md:w-[45%] lg:w-[40%] xl:w-[35%] glass-drawer border-l border-outline-variant z-40 flex-col shadow-[-4px_0_24px_rgba(0,0,0,0.5)]" id="investigationDrawer">
+<!-- Drawer Header -->
+<div class="flex justify-between items-start p-4 border-b border-outline-variant bg-surface-container/50">
+<div>
+<div class="flex items-center gap-2 mb-1">
+<span class="font-label-mono text-label-mono text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20">ALG-2049-CR</span>
+<div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-error/10 text-error border border-error/20">
+<div class="w-1.5 h-1.5 rounded-full bg-error"></div>
+<span class="font-label-mono text-[10px] uppercase">Critical</span>
+</div>
+</div>
+<h2 class="font-headline-sm text-headline-sm text-on-surface font-semibold">Multiple failed SSH logins followed by anomalous outbound data transfer</h2>
+<div class="text-body-sm text-on-surface-variant mt-1 flex items-center gap-4">
+<span>Detected: 2023-10-27 08:14:02 UTC</span>
+<span class="flex items-center gap-1">
+<div class="w-2 h-2 rounded-full bg-secondary-container animate-pulse"></div>
+                                ML Model Active
+                            </span>
+</div>
+</div>
+<button class="text-on-surface-variant hover:text-on-surface p-1 rounded hover:bg-surface-variant transition-colors" onclick="toggleDrawer(false)">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+<!-- Drawer Content scrollable -->
+<div class="flex-1 overflow-y-auto p-4 space-y-6">
+<!-- Top Metrics Grid -->
+<div class="grid grid-cols-2 gap-4">
+<!-- Anomaly Score -->
+<div class="bg-surface-container-low p-4 rounded border border-outline-variant flex flex-col justify-center items-center relative overflow-hidden">
+<div class="text-label-mono text-on-surface-variant uppercase mb-2">Anomaly Score</div>
+<div class="font-headline-lg text-headline-lg font-black text-error">94<span class="text-body-sm font-normal text-on-surface-variant">/100</span></div>
+<!-- Decorative background glow for high score -->
+<div class="absolute inset-0 bg-error/5 blur-xl pointer-events-none"></div>
+</div>
+<!-- Status -->
+<div class="bg-surface-container-low p-4 rounded border border-outline-variant flex flex-col justify-center">
+<div class="text-label-mono text-on-surface-variant uppercase mb-2">Analyst Assignment</div>
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-bright flex items-center justify-center border border-outline text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">person_add</span>
+</div>
+<div>
+<div class="text-body-sm text-on-surface">Unassigned</div>
+<a class="text-label-mono text-primary hover:underline" href="#">Assign to me</a>
+</div>
+</div>
+</div>
+</div>
+<!-- Tabs (Visual Only for layout) -->
+<div class="flex border-b border-outline-variant">
+<button class="px-4 py-2 font-label-mono text-label-mono text-primary border-b-2 border-primary">Detection</button>
+<button class="px-4 py-2 font-label-mono text-label-mono text-on-surface-variant hover:text-on-surface">Context</button>
+<button class="px-4 py-2 font-label-mono text-label-mono text-on-surface-variant hover:text-on-surface">Response</button>
+</div>
+<!-- Detection Section -->
+<section class="space-y-4">
+<h3 class="font-headline-sm text-on-surface border-l-2 border-primary pl-2">Why Flagged</h3>
+<p class="text-body-md text-on-surface-variant leading-relaxed">
+                            The entity <span class="font-mono text-secondary bg-secondary/10 px-1 rounded">srv-db-prod-eu-west</span> experienced 45 failed SSH login attempts from an unknown IP space within a 2-minute window. Following this, a successful connection was established, immediately followed by an anomalous outbound data transfer of 4.2GB to a known suspicious ASN.
+                        </p>
+<!-- Simple visual graph placeholder -->
+<div class="bg-surface-container-low border border-outline-variant rounded p-4 relative h-32 flex items-center justify-center overflow-hidden">
+<div class="absolute inset-0 opacity-20" style="background-image: radial-gradient(#424754 1px, transparent 1px); background-size: 16px 16px;"></div>
+<!-- Nodes Mockup -->
+<div class="flex items-center gap-8 relative z-10">
+<div class="flex flex-col items-center gap-1">
+<div class="w-10 h-10 rounded-full border-2 border-error bg-surface flex items-center justify-center shadow-[0_0_15px_rgba(255,180,171,0.3)]">
+<span class="material-symbols-outlined text-error">public</span>
+</div>
+<span class="text-[10px] font-mono text-on-surface-variant">192.168.x.x</span>
+</div>
+<div class="h-0.5 w-16 bg-error/50 relative">
+<div class="absolute top-1/2 left-1/2 -translate-y-1/2 -translate-x-1/2 bg-surface px-1 text-[8px] font-mono text-error border border-error/50 rounded">SSH/SFTP</div>
+</div>
+<div class="flex flex-col items-center gap-1">
+<div class="w-10 h-10 rounded-full border-2 border-primary bg-surface flex items-center justify-center shadow-[0_0_15px_rgba(77,142,255,0.3)]">
+<span class="material-symbols-outlined text-primary">dns</span>
+</div>
+<span class="text-[10px] font-mono text-on-surface-variant">srv-db-prod</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Context / Timeline Section -->
+<section class="space-y-4">
+<h3 class="font-headline-sm text-on-surface border-l-2 border-primary pl-2">Event Timeline</h3>
+<div class="relative border-l border-outline-variant ml-3 space-y-4 pb-4">
+<!-- Event 1 -->
+<div class="relative pl-6">
+<div class="absolute -left-[5px] top-1 w-2.5 h-2.5 rounded-full bg-surface border-2 border-tertiary"></div>
+<div class="text-[10px] font-mono text-on-surface-variant mb-0.5">08:11:45 UTC</div>
+<div class="text-body-sm text-on-surface">Initial Reconnaissance Scanner Detected</div>
+</div>
+<!-- Event 2 -->
+<div class="relative pl-6">
+<div class="absolute -left-[5px] top-1 w-2.5 h-2.5 rounded-full bg-surface border-2 border-error"></div>
+<div class="text-[10px] font-mono text-on-surface-variant mb-0.5">08:12:00 UTC - 08:13:50 UTC</div>
+<div class="text-body-sm text-on-surface">45 Failed Authentication Attempts</div>
+</div>
+<!-- Event 3 -->
+<div class="relative pl-6">
+<div class="absolute -left-[5px] top-1 w-2.5 h-2.5 rounded-full bg-error shadow-[0_0_8px_rgba(255,180,171,0.6)]"></div>
+<div class="text-[10px] font-mono text-on-surface-variant mb-0.5">08:14:02 UTC</div>
+<div class="text-body-sm text-on-surface font-semibold">Anomalous Outbound Data Transfer Initiated</div>
+<div class="mt-2 bg-surface-container p-2 rounded border border-outline-variant text-[11px] font-mono text-on-surface-variant break-all">
+                                    bytes_out: 4294967296, protocol: tcp, dest_port: 443
+                                </div>
+</div>
+</div>
+</section>
+</div>
+<!-- Drawer Footer (Actions) -->
+<div class="p-4 border-t border-outline-variant bg-surface flex justify-between gap-4">
+<button class="px-4 py-2 rounded text-body-sm font-medium border border-outline-variant hover:bg-surface-container-high transition-colors text-on-surface">
+                        Dismiss
+                    </button>
+<button class="px-4 py-2 rounded text-body-sm font-medium bg-error text-on-error hover:bg-error/90 transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">block</span>
+                        Isolate Host
+                    </button>
+</div>
+</aside>
+</main>
+</div>
+<script>
+        // Simple logic to toggle drawer for demonstration
+        const drawer = document.getElementById('investigationDrawer');
+        let isDrawerOpen = false;
+
+        function toggleDrawer(forceOpen = false) {
+            if (forceOpen && !isDrawerOpen) {
+                drawer.classList.remove('hidden');
+                drawer.classList.remove('drawer-slide-out');
+                drawer.classList.add('drawer-slide-in');
+                isDrawerOpen = true;
+            } else if (!forceOpen && isDrawerOpen) {
+                drawer.classList.remove('drawer-slide-in');
+                drawer.classList.add('drawer-slide-out');
+                // Wait for animation to finish before hiding
+                setTimeout(() => {
+                    drawer.classList.add('hidden');
+                    isDrawerOpen = false;
+                }, 300);
+            }
+        }
+    </script>
+</body></html>

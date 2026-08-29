@@ -1,0 +1,9 @@
+
+# Local backend logs
+backend-auth.log
+backend-auth-error.log
+
+autonomous-threat-defense/data/raw/
+autonomous-threat-defense/soc.db
+autonomous-threat-defense/data/processed/*.joblib
+autonomous-threat-defense/data/processed/*.parquet

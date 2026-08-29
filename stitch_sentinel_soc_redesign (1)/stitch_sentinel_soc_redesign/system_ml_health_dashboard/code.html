@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Aegis SOC - System &amp; ML Health</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-fixed-dim": "#adc6ff",
+                        "error": "#ffb4ab",
+                        "on-tertiary-container": "#461f00",
+                        "secondary-fixed": "#6ffbbe",
+                        "tertiary-fixed-dim": "#ffb786",
+                        "on-secondary": "#003824",
+                        "on-primary-fixed-variant": "#004395",
+                        "on-error": "#690005",
+                        "on-primary": "#002e6a",
+                        "surface-container-lowest": "#0c0e12",
+                        "on-surface": "#e2e2e8",
+                        "on-tertiary-fixed": "#311400",
+                        "on-primary-fixed": "#001a42",
+                        "secondary": "#4edea3",
+                        "on-secondary-fixed-variant": "#005236",
+                        "inverse-on-surface": "#2f3035",
+                        "surface-container": "#1e2024",
+                        "on-surface-variant": "#c2c6d6",
+                        "tertiary": "#ffb786",
+                        "outline-variant": "#424754",
+                        "inverse-primary": "#005ac2",
+                        "tertiary-container": "#df7412",
+                        "on-tertiary-fixed-variant": "#723600",
+                        "surface-tint": "#adc6ff",
+                        "outline": "#8c909f",
+                        "on-secondary-fixed": "#002113",
+                        "primary-container": "#4d8eff",
+                        "surface-container-low": "#1a1c20",
+                        "primary": "#adc6ff",
+                        "background": "#111318",
+                        "inverse-surface": "#e2e2e8",
+                        "secondary-container": "#00a572",
+                        "on-tertiary": "#502400",
+                        "secondary-fixed-dim": "#4edea3",
+                        "surface-dim": "#111318",
+                        "surface-variant": "#333539",
+                        "on-background": "#e2e2e8",
+                        "surface-container-high": "#282a2e",
+                        "surface-container-highest": "#333539",
+                        "tertiary-fixed": "#ffdcc6",
+                        "primary-fixed": "#d8e2ff",
+                        "on-primary-container": "#00285d",
+                        "on-secondary-container": "#00311f",
+                        "surface-bright": "#37393e",
+                        "on-error-container": "#ffdad6",
+                        "error-container": "#93000a",
+                        "surface": "#111318"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "sidebar-width": "240px",
+                        "unit": "4px",
+                        "table-row-height": "40px",
+                        "container-padding": "24px",
+                        "sidebar-collapsed": "64px",
+                        "element-gap": "12px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Inter"],
+                        "label-mono": ["JetBrains Mono"],
+                        "headline-lg": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "data-tabular": ["Inter"],
+                        "headline-sm": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "label-mono": ["12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+                        "headline-lg": ["30px", { "lineHeight": "36px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "body-sm": ["12px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "data-tabular": ["13px", { "lineHeight": "16px", "fontWeight": "500" }],
+                        "headline-sm": ["18px", { "lineHeight": "24px", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .pulse-dot { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+        .glass-panel { background: rgba(30, 32, 36, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(66, 71, 84, 0.5); }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md antialiased overflow-hidden flex h-screen">
+<!-- App Shell: SideNavBar -->
+<nav class="bg-surface-container dark:bg-surface-container docked left-0 h-full w-sidebar-width border-r border-outline-variant flat no shadows fixed left-0 top-0 h-full flex flex-col z-40 transition-all duration-150 ease-in-out">
+<div class="p-container-padding flex flex-col gap-element-gap border-b border-outline-variant/30">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30">
+<span class="material-symbols-outlined text-primary text-sm" style="font-variation-settings: 'FILL' 1;">security</span>
+</div>
+<div>
+<h1 class="font-headline-sm text-headline-sm font-black text-on-surface">Global Ops</h1>
+<p class="font-label-mono text-label-mono text-on-surface-variant">Production Environment</p>
+</div>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto py-4 flex flex-col gap-1 px-3">
+<a class="flex items-center gap-3 px-3 py-2 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors text-lg" data-icon="dashboard">dashboard</span>
+<span class="font-body-md text-body-md">Overview</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors text-lg" data-icon="analytics">analytics</span>
+<span class="font-body-md text-body-md">Telemetry</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors text-lg" data-icon="emergency_home">emergency_home</span>
+<span class="font-body-md text-body-md">Alerts</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors text-lg" data-icon="search_insights">search_insights</span>
+<span class="font-body-md text-body-md">Investigations</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors text-lg" data-icon="account_tree">account_tree</span>
+<span class="font-body-md text-body-md">Attack Graph</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors text-lg" data-icon="toll">toll</span>
+<span class="font-body-md text-body-md">Honeytokens</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors text-lg" data-icon="build_circle">build_circle</span>
+<span class="font-body-md text-body-md">Remediation</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors text-lg" data-icon="science">science</span>
+<span class="font-body-md text-body-md">Simulation</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-DEFAULT text-primary bg-primary-container/10 border-l-2 border-primary group" href="#">
+<span class="material-symbols-outlined text-primary text-lg" data-icon="health_and_safety" style="font-variation-settings: 'FILL' 1;">health_and_safety</span>
+<span class="font-body-md text-body-md font-medium">System Health</span>
+</a>
+</div>
+<div class="mt-auto p-4 border-t border-outline-variant/30 flex flex-col gap-1">
+<a class="flex items-center gap-3 px-3 py-2 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors text-lg" data-icon="help">help</span>
+<span class="font-body-md text-body-md">Support</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors text-lg" data-icon="settings">settings</span>
+<span class="font-body-md text-body-md">Settings</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 ml-sidebar-width flex flex-col h-full bg-background overflow-hidden relative">
+<!-- App Shell: TopNavBar (Simulated Top App Bar for context) -->
+<header class="bg-surface dark:bg-surface flex justify-between items-center w-full px-container-padding h-14 border-b border-outline-variant dark:border-outline-variant shrink-0 z-30 relative">
+<div class="flex items-center gap-4">
+<span class="font-headline-md text-headline-md font-bold text-primary dark:text-primary tracking-tight">Aegis SOC</span>
+<div class="h-6 w-px bg-outline-variant/50 mx-2"></div>
+<span class="font-label-mono text-label-mono text-on-surface-variant uppercase tracking-widest">System Status</span>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2 bg-surface-container px-3 py-1.5 rounded-DEFAULT border border-outline-variant/50">
+<div class="w-2 h-2 rounded-full bg-secondary pulse-dot"></div>
+<span class="font-label-mono text-label-mono text-secondary">ALL SYSTEMS NOMINAL</span>
+</div>
+<div class="flex gap-2">
+<button class="p-2 text-on-surface-variant hover:bg-surface-container-high transition-colors rounded-DEFAULT flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="hub">hub</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:bg-surface-container-high transition-colors rounded-DEFAULT flex items-center justify-center relative">
+<span class="material-symbols-outlined" data-icon="monitor_heart">monitor_heart</span>
+<span class="absolute top-1.5 right-1.5 w-2 h-2 bg-secondary rounded-full"></span>
+</button>
+<button class="p-2 text-on-surface-variant hover:bg-surface-container-high transition-colors rounded-DEFAULT flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+</div>
+<div class="w-8 h-8 rounded-full bg-surface-variant border border-outline-variant overflow-hidden ml-2 flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="person">person</span>
+</div>
+</div>
+</header>
+<!-- Dashboard Canvas -->
+<div class="flex-1 overflow-y-auto p-container-padding">
+<div class="max-w-[1600px] mx-auto flex flex-col gap-6">
+<!-- Hero Metrics Strip -->
+<div class="grid grid-cols-4 gap-4">
+<div class="bg-surface-container p-4 rounded-lg border border-outline-variant/50 flex flex-col gap-2">
+<span class="font-label-mono text-label-mono text-on-surface-variant uppercase">Global Uptime</span>
+<div class="flex items-end gap-2">
+<span class="font-headline-lg text-headline-lg text-on-surface font-light">99.99</span>
+<span class="font-body-md text-body-md text-secondary mb-1">%</span>
+</div>
+<div class="w-full bg-surface-variant h-1 mt-2 rounded-full overflow-hidden">
+<div class="bg-secondary h-full w-[99.99%]"></div>
+</div>
+</div>
+<div class="bg-surface-container p-4 rounded-lg border border-outline-variant/50 flex flex-col gap-2">
+<span class="font-label-mono text-label-mono text-on-surface-variant uppercase">API Latency (p99)</span>
+<div class="flex items-end gap-2">
+<span class="font-headline-lg text-headline-lg text-on-surface font-light">42</span>
+<span class="font-label-mono text-label-mono text-on-surface-variant mb-1">ms</span>
+</div>
+<div class="w-full bg-surface-variant h-1 mt-2 rounded-full overflow-hidden flex">
+<div class="bg-secondary h-full w-[30%]"></div>
+<div class="bg-surface h-full w-[2px]"></div>
+</div>
+</div>
+<div class="bg-surface-container p-4 rounded-lg border border-outline-variant/50 flex flex-col gap-2 relative overflow-hidden">
+<div class="absolute inset-0 bg-primary/5"></div>
+<span class="font-label-mono text-label-mono text-on-surface-variant uppercase relative z-10">Active Inferences</span>
+<div class="flex items-end gap-2 relative z-10">
+<span class="font-headline-lg text-headline-lg text-primary font-light">1,204</span>
+<span class="font-label-mono text-label-mono text-primary mb-1">/sec</span>
+</div>
+<div class="w-full bg-surface-variant h-1 mt-2 rounded-full overflow-hidden relative z-10">
+<div class="bg-primary h-full w-[65%]"></div>
+</div>
+</div>
+<div class="bg-surface-container p-4 rounded-lg border border-outline-variant/50 flex flex-col gap-2">
+<span class="font-label-mono text-label-mono text-on-surface-variant uppercase">Threat Intel Sync</span>
+<div class="flex items-end gap-2">
+<span class="font-headline-lg text-headline-lg text-on-surface font-light">2</span>
+<span class="font-label-mono text-label-mono text-on-surface-variant mb-1">min ago</span>
+</div>
+<div class="flex items-center gap-2 mt-auto">
+<span class="material-symbols-outlined text-secondary text-sm">check_circle</span>
+<span class="font-label-mono text-label-mono text-secondary text-[10px]">SYNCED</span>
+</div>
+</div>
+</div>
+<!-- Main Bento Grid -->
+<div class="grid grid-cols-12 gap-6 h-[600px]">
+<!-- Core Infrastructure (Left Col) -->
+<div class="col-span-4 flex flex-col gap-4">
+<h2 class="font-headline-sm text-headline-sm text-on-surface mb-2 border-b border-outline-variant/50 pb-2">Core Infrastructure</h2>
+<div class="glass-panel p-4 rounded-lg flex items-center justify-between group hover:bg-surface-container-high transition-colors">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-DEFAULT bg-surface-variant flex items-center justify-center border border-outline-variant/50">
+<span class="material-symbols-outlined text-on-surface" data-icon="dns">dns</span>
+</div>
+<div class="flex flex-col">
+<span class="font-body-lg text-body-lg text-on-surface font-medium">Ingest API Gateway</span>
+<span class="font-label-mono text-label-mono text-on-surface-variant">us-east-1a • 42ms ping</span>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-label-mono text-label-mono text-secondary">READY</span>
+<div class="w-2 h-2 rounded-full bg-secondary"></div>
+</div>
+</div>
+<div class="glass-panel p-4 rounded-lg flex items-center justify-between group hover:bg-surface-container-high transition-colors">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-DEFAULT bg-surface-variant flex items-center justify-center border border-outline-variant/50">
+<span class="material-symbols-outlined text-on-surface" data-icon="database">database</span>
+</div>
+<div class="flex flex-col">
+<span class="font-body-lg text-body-lg text-on-surface font-medium">Telemetry Datastore</span>
+<span class="font-label-mono text-label-mono text-on-surface-variant">ClickHouse Cluster • OK</span>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-label-mono text-label-mono text-secondary">READY</span>
+<div class="w-2 h-2 rounded-full bg-secondary"></div>
+</div>
+</div>
+<div class="glass-panel p-4 rounded-lg flex items-center justify-between group hover:bg-surface-container-high transition-colors">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-DEFAULT bg-surface-variant flex items-center justify-center border border-outline-variant/50">
+<span class="material-symbols-outlined text-on-surface" data-icon="router">router</span>
+</div>
+<div class="flex flex-col">
+<span class="font-body-lg text-body-lg text-on-surface font-medium">WebSocket Event Bus</span>
+<span class="font-label-mono text-label-mono text-on-surface-variant">Kafka • 12ms latency</span>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-label-mono text-label-mono text-secondary">READY</span>
+<div class="w-2 h-2 rounded-full bg-secondary"></div>
+</div>
+</div>
+<div class="glass-panel p-4 rounded-lg flex items-center justify-between border-l-2 border-tertiary-container group hover:bg-surface-container-high transition-colors">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-DEFAULT bg-surface-variant flex items-center justify-center border border-outline-variant/50">
+<span class="material-symbols-outlined text-tertiary-container" data-icon="lock">lock</span>
+</div>
+<div class="flex flex-col">
+<span class="font-body-lg text-body-lg text-on-surface font-medium">Auth Provider</span>
+<span class="font-label-mono text-label-mono text-on-surface-variant">SSO Service • Degraded</span>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-label-mono text-label-mono text-tertiary-container">DEGRADED</span>
+<div class="w-2 h-2 rounded-full bg-tertiary-container"></div>
+</div>
+</div>
+</div>
+<!-- ML Service Readiness (Center Col - The Core) -->
+<div class="col-span-5 bg-surface-container rounded-xl border border-outline-variant/50 flex flex-col overflow-hidden relative">
+<div class="absolute inset-0 opacity-10 pointer-events-none" style="background-image: radial-gradient(circle at 50% 0%, var(--tw-colors-primary-container) 0%, transparent 70%);"></div>
+<div class="p-6 border-b border-outline-variant/30 flex justify-between items-center relative z-10">
+<div>
+<h2 class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">memory</span>
+                                    ML Engine Readiness
+                                </h2>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Sentinel AI V4.2 Core</p>
+</div>
+<div class="bg-primary-container/20 border border-primary/30 px-3 py-1 rounded-full flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-primary pulse-dot"></div>
+<span class="font-label-mono text-label-mono text-primary">INFERENCE ACTIVE</span>
+</div>
+</div>
+<div class="flex-1 p-6 flex flex-col gap-4 relative z-10">
+<!-- State Contract Visualization -->
+<div class="bg-surface p-4 rounded-lg border border-outline-variant/30 flex flex-col gap-4">
+<h3 class="font-label-mono text-label-mono text-on-surface-variant uppercase">Service Contract State</h3>
+<div class="flex flex-col gap-3">
+<!-- Configured -->
+<div class="flex items-center gap-4">
+<div class="w-6 h-6 rounded-full bg-secondary/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary text-[14px]">check</span>
+</div>
+<div class="h-px bg-outline-variant/50 flex-1"></div>
+<div class="bg-surface-variant px-3 py-1 rounded-DEFAULT border border-outline-variant/50 w-48 text-right">
+<span class="font-label-mono text-label-mono text-on-surface">Configured URL</span>
+</div>
+</div>
+<!-- Reachable -->
+<div class="flex items-center gap-4">
+<div class="w-6 h-6 rounded-full bg-secondary/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary text-[14px]">check</span>
+</div>
+<div class="h-px bg-outline-variant/50 flex-1"></div>
+<div class="bg-surface-variant px-3 py-1 rounded-DEFAULT border border-outline-variant/50 w-48 text-right">
+<span class="font-label-mono text-label-mono text-on-surface">Reachable (Ping OK)</span>
+</div>
+</div>
+<!-- Inference Ready -->
+<div class="flex items-center gap-4">
+<div class="w-6 h-6 rounded-full bg-secondary/20 flex items-center justify-center relative">
+<span class="material-symbols-outlined text-secondary text-[14px]">check</span>
+<div class="absolute -bottom-1 -right-1 w-2 h-2 bg-secondary rounded-full pulse-dot"></div>
+</div>
+<div class="h-px bg-outline-variant/50 flex-1"></div>
+<div class="bg-primary/10 px-3 py-1 rounded-DEFAULT border border-primary/30 w-48 text-right">
+<span class="font-label-mono text-label-mono text-primary font-bold">Inference Ready</span>
+</div>
+</div>
+<!-- Final State -->
+<div class="mt-4 p-3 bg-secondary/10 border border-secondary/30 rounded-DEFAULT flex items-center justify-center gap-3">
+<span class="material-symbols-outlined text-secondary">verified_user</span>
+<span class="font-body-lg text-body-lg text-secondary font-medium tracking-wide">SYSTEM CAN USE ML</span>
+</div>
+</div>
+</div>
+<!-- Sub Models Status -->
+<div class="grid grid-cols-2 gap-4 mt-2">
+<div class="bg-surface p-3 rounded-lg border border-outline-variant/30 flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-label-mono text-label-mono text-on-surface">DGA Classifier</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">v2.1 • 8ms avg</span>
+</div>
+<div class="w-3 h-3 rounded-full bg-secondary border border-secondary-container"></div>
+</div>
+<div class="bg-surface p-3 rounded-lg border border-outline-variant/30 flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-label-mono text-label-mono text-on-surface">Anomaly Detect</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">v4.0 • 45ms avg</span>
+</div>
+<div class="w-3 h-3 rounded-full bg-secondary border border-secondary-container"></div>
+</div>
+<div class="bg-surface p-3 rounded-lg border border-outline-variant/30 flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-label-mono text-label-mono text-on-surface">Entity Graph ML</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Fallback Mode</span>
+</div>
+<div class="w-3 h-3 rounded-full bg-outline border border-outline-variant"></div>
+</div>
+<div class="bg-surface p-3 rounded-lg border-l-2 border-error border-y-outline-variant/30 border-r-outline-variant/30 flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-label-mono text-label-mono text-on-surface">NLP Log Parse</span>
+<span class="font-body-sm text-body-sm text-error">Model Timeout</span>
+</div>
+<div class="w-3 h-3 rounded-full bg-error border border-error-container"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Diagnostic Logs (Right Col) -->
+<div class="col-span-3 flex flex-col gap-4">
+<h2 class="font-headline-sm text-headline-sm text-on-surface mb-2 border-b border-outline-variant/50 pb-2 flex justify-between items-center">
+                            Event Stream
+                            <span class="bg-surface-variant px-2 py-0.5 rounded-sm font-label-mono text-[10px] text-on-surface-variant">LIVE</span>
+</h2>
+<div class="bg-surface-container rounded-lg border border-outline-variant/30 flex-1 overflow-hidden flex flex-col">
+<div class="p-2 border-b border-outline-variant/30 bg-surface-variant/50 flex gap-2">
+<button class="px-2 py-1 bg-surface rounded text-xs font-label-mono text-on-surface">All</button>
+<button class="px-2 py-1 rounded text-xs font-label-mono text-error">Errors (2)</button>
+<button class="px-2 py-1 rounded text-xs font-label-mono text-primary">ML Events</button>
+</div>
+<div class="flex-1 overflow-y-auto p-2 flex flex-col gap-1 font-label-mono text-label-mono">
+<div class="flex gap-2 p-1.5 hover:bg-surface-variant/50 rounded group">
+<span class="text-on-surface-variant shrink-0">14:02:41</span>
+<span class="text-secondary shrink-0">[INFO]</span>
+<span class="text-on-surface break-all">Health check OK: Ingest API</span>
+</div>
+<div class="flex gap-2 p-1.5 hover:bg-surface-variant/50 rounded group">
+<span class="text-on-surface-variant shrink-0">14:02:39</span>
+<span class="text-primary shrink-0">[ML_OP]</span>
+<span class="text-on-surface break-all">DGA model weights reloaded successfully</span>
+</div>
+<div class="flex gap-2 p-1.5 hover:bg-surface-variant/50 rounded bg-error/10 border-l-2 border-error">
+<span class="text-on-surface-variant shrink-0">14:02:15</span>
+<span class="text-error shrink-0">[ERROR]</span>
+<span class="text-on-surface break-all">NLP Model timeout exceeding 500ms on shard 4</span>
+</div>
+<div class="flex gap-2 p-1.5 hover:bg-surface-variant/50 rounded group">
+<span class="text-on-surface-variant shrink-0">14:01:59</span>
+<span class="text-tertiary-container shrink-0">[WARN]</span>
+<span class="text-on-surface break-all">Auth SSO latency spike detected (450ms)</span>
+</div>
+<div class="flex gap-2 p-1.5 hover:bg-surface-variant/50 rounded group">
+<span class="text-on-surface-variant shrink-0">14:01:45</span>
+<span class="text-secondary shrink-0">[INFO]</span>
+<span class="text-on-surface break-all">WebSocket client connection established: client_id=9x8a</span>
+</div>
+<div class="flex gap-2 p-1.5 hover:bg-surface-variant/50 rounded bg-outline/10 border-l-2 border-outline">
+<span class="text-on-surface-variant shrink-0">14:01:12</span>
+<span class="text-outline shrink-0">[FALLBK]</span>
+<span class="text-on-surface break-all">Entity Graph using cached topology (node unreachable)</span>
+</div>
+<div class="flex gap-2 p-1.5 hover:bg-surface-variant/50 rounded group">
+<span class="text-on-surface-variant shrink-0">14:00:00</span>
+<span class="text-secondary shrink-0">[SYS]</span>
+<span class="text-on-surface break-all">Hourly telemetry rollup completed in 2.1s</span>
+</div>
+</div>
+<div class="p-2 border-t border-outline-variant/30 bg-surface text-center">
+<span class="font-label-mono text-[10px] text-on-surface-variant">Stream connected via wss://ops-core...</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

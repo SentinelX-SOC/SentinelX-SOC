@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Investigations - Aegis SOC</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary-fixed-dim": "#adc6ff",
+                        "error": "#ffb4ab",
+                        "on-tertiary-container": "#461f00",
+                        "secondary-fixed": "#6ffbbe",
+                        "tertiary-fixed-dim": "#ffb786",
+                        "on-secondary": "#003824",
+                        "on-primary-fixed-variant": "#004395",
+                        "on-error": "#690005",
+                        "on-primary": "#002e6a",
+                        "surface-container-lowest": "#0c0e12",
+                        "on-surface": "#e2e2e8",
+                        "on-tertiary-fixed": "#311400",
+                        "on-primary-fixed": "#001a42",
+                        "secondary": "#4edea3",
+                        "on-secondary-fixed-variant": "#005236",
+                        "inverse-on-surface": "#2f3035",
+                        "surface-container": "#1e2024",
+                        "on-surface-variant": "#c2c6d6",
+                        "tertiary": "#ffb786",
+                        "outline-variant": "#424754",
+                        "inverse-primary": "#005ac2",
+                        "tertiary-container": "#df7412",
+                        "on-tertiary-fixed-variant": "#723600",
+                        "surface-tint": "#adc6ff",
+                        "outline": "#8c909f",
+                        "on-secondary-fixed": "#002113",
+                        "primary-container": "#4d8eff",
+                        "surface-container-low": "#1a1c20",
+                        "primary": "#adc6ff",
+                        "background": "#111318",
+                        "inverse-surface": "#e2e2e8",
+                        "secondary-container": "#00a572",
+                        "on-tertiary": "#502400",
+                        "secondary-fixed-dim": "#4edea3",
+                        "surface-dim": "#111318",
+                        "surface-variant": "#333539",
+                        "on-background": "#e2e2e8",
+                        "surface-container-high": "#282a2e",
+                        "surface-container-highest": "#333539",
+                        "tertiary-fixed": "#ffdcc6",
+                        "primary-fixed": "#d8e2ff",
+                        "on-primary-container": "#00285d",
+                        "on-secondary-container": "#00311f",
+                        "surface-bright": "#37393e",
+                        "on-error-container": "#ffdad6",
+                        "error-container": "#93000a",
+                        "surface": "#111318"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    spacing: {
+                        "sidebar-width": "240px",
+                        "unit": "4px",
+                        "table-row-height": "40px",
+                        "container-padding": "24px",
+                        "sidebar-collapsed": "64px",
+                        "element-gap": "12px"
+                    },
+                    fontFamily: {
+                        "body-md": ["Inter"],
+                        "label-mono": ["JetBrains Mono"],
+                        "headline-lg": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "data-tabular": ["Inter"],
+                        "headline-sm": ["Inter"]
+                    },
+                    fontSize: {
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "label-mono": ["12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+                        "headline-lg": ["30px", { "lineHeight": "36px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "body-sm": ["12px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "data-tabular": ["13px", { "lineHeight": "16px", "fontWeight": "500" }],
+                        "headline-sm": ["18px", { "lineHeight": "24px", "fontWeight": "600" }]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .mono-font { font-family: 'JetBrains Mono', monospace; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #424754; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #8c909f; }
+    </style>
+</head>
+<body class="bg-surface-container-lowest text-on-surface h-screen overflow-hidden flex font-body-md text-body-md">
+<!-- SideNavBar (Shared Component) -->
+<nav class="bg-surface-container dark:bg-surface-container docked left-0 h-full w-sidebar-width border-r border-outline-variant flat no shadows fixed left-0 top-0 h-full flex flex-col z-40 transition-all duration-150 ease-in-out">
+<div class="px-6 py-5 border-b border-outline-variant flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-on-primary text-sm" style="font-variation-settings: 'FILL' 1;">shield</span>
+</div>
+<div>
+<h2 class="font-headline-sm text-headline-sm font-black text-on-surface tracking-tight">Global Ops</h2>
+<p class="font-label-mono text-label-mono text-on-surface-variant opacity-80 uppercase text-[10px]">Production Environment</p>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto py-4 flex flex-col gap-1 px-3">
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface group" href="#">
+<span class="material-symbols-outlined text-[20px]">dashboard</span>
+<span class="font-body-md text-body-md">Overview</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface group" href="#">
+<span class="material-symbols-outlined text-[20px]">analytics</span>
+<span class="font-body-md text-body-md">Telemetry</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface group" href="#">
+<span class="material-symbols-outlined text-[20px]">emergency_home</span>
+<span class="font-body-md text-body-md flex-1">Alerts</span>
+<span class="font-label-mono text-[10px] bg-error/20 text-error px-1.5 py-0.5 rounded">12</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-primary bg-primary-container/10 border-l-2 border-primary group" href="#">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">search_insights</span>
+<span class="font-body-md text-body-md font-medium">Investigations</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface group" href="#">
+<span class="material-symbols-outlined text-[20px]">account_tree</span>
+<span class="font-body-md text-body-md">Attack Graph</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface group" href="#">
+<span class="material-symbols-outlined text-[20px]">toll</span>
+<span class="font-body-md text-body-md">Honeytokens</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface group" href="#">
+<span class="material-symbols-outlined text-[20px]">build_circle</span>
+<span class="font-body-md text-body-md">Remediation</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface group" href="#">
+<span class="material-symbols-outlined text-[20px]">science</span>
+<span class="font-body-md text-body-md">Simulation</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface group" href="#">
+<span class="material-symbols-outlined text-[20px]">health_and_safety</span>
+<span class="font-body-md text-body-md">System Health</span>
+</a>
+</div>
+<div class="p-3 border-t border-outline-variant flex flex-col gap-1">
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface" href="#">
+<span class="material-symbols-outlined text-[20px]">help</span>
+<span class="font-body-md text-body-md">Support</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface" href="#">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+<span class="font-body-md text-body-md">Settings</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Wrapper -->
+<div class="flex-1 ml-sidebar-width flex flex-col h-full overflow-hidden bg-background">
+<!-- TopNavBar (Shared Component) -->
+<header class="bg-surface dark:bg-surface docked full-width top-0 border-b border-outline-variant dark:border-outline-variant flat no shadows flex justify-between items-center w-full px-container-padding h-14 shrink-0 z-30">
+<div class="flex items-center gap-6">
+<div class="font-headline-md text-headline-md font-bold text-primary dark:text-primary tracking-tight">Aegis SOC</div>
+<div class="h-5 w-px bg-outline-variant opacity-50"></div>
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-3 text-on-surface-variant text-[18px]">search</span>
+<input class="bg-surface-container-high border-none rounded pl-9 pr-4 py-1.5 font-label-mono text-label-mono text-on-surface placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary w-64 transition-all" placeholder="Search entity, IP, hash..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2 border-r border-outline-variant pr-4">
+<button class="p-1.5 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded transition-colors" title="Hub">
+<span class="material-symbols-outlined">hub</span>
+</button>
+<button class="p-1.5 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded transition-colors" title="Monitor Heart">
+<span class="material-symbols-outlined">monitor_heart</span>
+</button>
+<button class="p-1.5 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded transition-colors" title="Settings">
+<span class="material-symbols-outlined">settings</span>
+</button>
+</div>
+<button class="flex items-center gap-2 hover:opacity-80 transition-opacity">
+<div class="w-7 h-7 rounded bg-surface-container-highest border border-outline-variant flex items-center justify-center overflow-hidden">
+<span class="material-symbols-outlined text-primary text-[18px]">person</span>
+</div>
+</button>
+</div>
+</header>
+<!-- Three-Pane Workspace -->
+<main class="flex-1 flex overflow-hidden">
+<!-- LEFT PANE: Entity Selection List -->
+<section class="w-80 border-r border-outline-variant bg-surface flex flex-col shrink-0">
+<div class="p-4 border-b border-outline-variant flex justify-between items-center bg-surface-container-low shrink-0">
+<h3 class="font-headline-sm text-headline-sm font-semibold">Active Cases</h3>
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[18px]">filter_list</span>
+</button>
+</div>
+<div class="flex-1 overflow-y-auto p-2 flex flex-col gap-1">
+<!-- List Item: Active/Selected -->
+<div class="p-3 bg-surface-container-high border-l-2 border-primary rounded-r cursor-pointer flex flex-col gap-2 relative overflow-hidden group">
+<div class="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+<div class="flex justify-between items-start z-10">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-error animate-pulse"></span>
+<span class="font-label-mono text-label-mono text-on-surface font-semibold">usr: E.Tyrell</span>
+</div>
+<span class="font-label-mono text-[10px] text-on-surface-variant">2m ago</span>
+</div>
+<div class="flex justify-between items-end z-10">
+<div class="text-body-sm text-on-surface-variant line-clamp-1">Lateral Movement Suspicion</div>
+<div class="font-label-mono text-label-mono text-error bg-error/10 px-1.5 py-0.5 rounded">R: 88</div>
+</div>
+</div>
+<!-- List Item: Normal -->
+<div class="p-3 hover:bg-surface-container-high rounded cursor-pointer flex flex-col gap-2 transition-colors border-l-2 border-transparent">
+<div class="flex justify-between items-start">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+<span class="font-label-mono text-label-mono text-on-surface">hst: prod-api-04</span>
+</div>
+<span class="font-label-mono text-[10px] text-on-surface-variant">14m ago</span>
+</div>
+<div class="flex justify-between items-end">
+<div class="text-body-sm text-on-surface-variant line-clamp-1">Anomalous Outbound Traffic</div>
+<div class="font-label-mono text-label-mono text-tertiary bg-tertiary/10 px-1.5 py-0.5 rounded">R: 62</div>
+</div>
+</div>
+<!-- List Item: Normal -->
+<div class="p-3 hover:bg-surface-container-high rounded cursor-pointer flex flex-col gap-2 transition-colors border-l-2 border-transparent">
+<div class="flex justify-between items-start">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+<span class="font-label-mono text-label-mono text-on-surface">svc: backup_agent</span>
+</div>
+<span class="font-label-mono text-[10px] text-on-surface-variant">1h ago</span>
+</div>
+<div class="flex justify-between items-end">
+<div class="text-body-sm text-on-surface-variant line-clamp-1">Failed Auth Spikes</div>
+<div class="font-label-mono text-label-mono text-secondary bg-secondary/10 px-1.5 py-0.5 rounded">R: 45</div>
+</div>
+</div>
+</div>
+</section>
+<!-- CENTER PANE: Timeline & Evidence -->
+<section class="flex-1 flex flex-col bg-surface-container-lowest relative overflow-hidden">
+<!-- Entity Header -->
+<div class="px-6 py-4 border-b border-outline-variant bg-surface flex justify-between items-center shrink-0 z-10 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.3)]">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded bg-surface-container border border-outline-variant flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant">person_4</span>
+</div>
+<div>
+<h2 class="font-headline-md text-headline-md font-semibold text-on-surface">Eldon Tyrell</h2>
+<div class="font-label-mono text-label-mono text-on-surface-variant flex items-center gap-2 mt-0.5">
+<span>etyrell@tyrell.corp</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span>ID: USR-9942</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex flex-col items-end">
+<span class="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-wider">Dynamic Risk Score</span>
+<div class="flex items-baseline gap-1">
+<span class="font-headline-lg text-headline-lg text-error font-bold">88</span>
+<span class="text-body-sm text-error/70">/100</span>
+</div>
+</div>
+<div class="h-10 w-px bg-outline-variant opacity-50"></div>
+<button class="bg-primary text-on-primary-container px-4 py-2 rounded font-body-md font-medium hover:bg-primary-fixed transition-colors">
+                            Declare Incident
+                        </button>
+</div>
+</div>
+<!-- Timeline Canvas -->
+<div class="flex-1 overflow-y-auto p-8 relative">
+<!-- Vertical Line -->
+<div class="absolute top-0 bottom-0 left-[120px] w-px bg-outline-variant/30"></div>
+<div class="flex flex-col gap-8 max-w-4xl mx-auto">
+<!-- Timeline Event Group -->
+<div class="relative pl-[140px]">
+<!-- Timestamp -->
+<div class="absolute left-0 top-1.5 w-[100px] text-right font-label-mono text-label-mono text-on-surface-variant">
+                                14:32:01 UTC
+                            </div>
+<!-- Node on line -->
+<div class="absolute left-[116px] top-2 w-2.5 h-2.5 rounded-full bg-error border-2 border-surface-container-lowest shadow-[0_0_8px_rgba(255,180,171,0.6)]"></div>
+<!-- Event Card -->
+<div class="bg-surface border border-outline-variant rounded p-4 shadow-sm hover:border-outline transition-colors">
+<div class="flex justify-between items-start mb-3">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-error text-[18px]">vpn_key_alert</span>
+<h4 class="font-body-lg text-body-lg font-medium text-on-surface">Abnormal Credential Access</h4>
+</div>
+<span class="font-label-mono text-[10px] bg-error/10 text-error px-2 py-0.5 rounded border border-error/20">CRITICAL</span>
+</div>
+<p class="text-body-sm text-on-surface-variant mb-3">Process <span class="font-label-mono text-on-surface bg-surface-container px-1 rounded">lsass.exe</span> accessed by unusual parent process.</p>
+<!-- Evidence Snippet -->
+<div class="bg-[#0c0e12] border border-outline-variant/50 rounded p-3 font-label-mono text-[11px] text-on-surface-variant overflow-x-auto">
+<div class="flex"><span class="text-outline w-12 shrink-0">EventID:</span> <span class="text-primary-fixed-dim">4656</span></div>
+<div class="flex"><span class="text-outline w-12 shrink-0">Target:</span> <span class="text-on-surface">C:\Windows\System32\lsass.exe</span></div>
+<div class="flex"><span class="text-outline w-12 shrink-0">Source:</span> <span class="text-error">C:\Temp\dump_tool.exe</span></div>
+<div class="flex"><span class="text-outline w-12 shrink-0">User:</span> <span>etyrell</span></div>
+</div>
+<div class="mt-3 flex gap-2">
+<button class="text-primary hover:text-primary-fixed font-body-sm text-body-sm flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">visibility</span> View Raw Log</button>
+</div>
+</div>
+</div>
+<!-- Timeline Event Group -->
+<div class="relative pl-[140px]">
+<div class="absolute left-0 top-1.5 w-[100px] text-right font-label-mono text-label-mono text-on-surface-variant">
+                                14:28:45 UTC
+                            </div>
+<div class="absolute left-[116px] top-2 w-2.5 h-2.5 rounded-full bg-tertiary border-2 border-surface-container-lowest"></div>
+<div class="bg-surface border border-outline-variant rounded p-4 shadow-sm hover:border-outline transition-colors">
+<div class="flex justify-between items-start mb-3">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-tertiary text-[18px]">dns</span>
+<h4 class="font-body-lg text-body-lg font-medium text-on-surface">Suspicious DNS Request</h4>
+</div>
+<span class="font-label-mono text-[10px] bg-tertiary/10 text-tertiary px-2 py-0.5 rounded border border-tertiary/20">HIGH</span>
+</div>
+<p class="text-body-sm text-on-surface-variant mb-2">Host resolved known malicious DGA domain.</p>
+<div class="bg-[#0c0e12] border border-outline-variant/50 rounded p-2 px-3 font-label-mono text-[11px] text-on-surface flex justify-between items-center">
+<span>Query: <span class="text-tertiary-fixed-dim">xq9f82kd.com</span></span>
+<span class="text-outline">Resp: NXDOMAIN</span>
+</div>
+</div>
+</div>
+<!-- Timeline Event Group -->
+<div class="relative pl-[140px] opacity-70">
+<div class="absolute left-0 top-1.5 w-[100px] text-right font-label-mono text-label-mono text-on-surface-variant">
+                                12:15:00 UTC
+                            </div>
+<div class="absolute left-[116px] top-2 w-2 h-2 rounded-full bg-outline border-2 border-surface-container-lowest"></div>
+<div class="flex items-center gap-3 p-2">
+<span class="material-symbols-outlined text-outline text-[16px]">login</span>
+<span class="text-body-sm text-on-surface-variant">Successful interactive logon via VPN (IP: 198.51.100.24)</span>
+</div>
+</div>
+<!-- End Indicator -->
+<div class="relative pl-[140px] pt-4">
+<div class="absolute left-[116px] top-6 w-2.5 h-2.5 rounded-full border-2 border-outline-variant bg-surface-container-lowest"></div>
+<div class="text-body-sm text-outline italic">Investigation boundary reached (4h window)</div>
+</div>
+</div>
+</div>
+</section>
+<!-- RIGHT PANE: Context & Actions -->
+<section class="w-96 border-l border-outline-variant bg-surface flex flex-col shrink-0 z-20 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.3)]">
+<div class="p-4 border-b border-outline-variant bg-surface-container-low shrink-0">
+<h3 class="font-headline-sm text-headline-sm font-semibold">Context &amp; Graph</h3>
+</div>
+<div class="flex-1 overflow-y-auto flex flex-col">
+<!-- Graph View Area -->
+<div class="h-48 border-b border-outline-variant bg-[#0c0e12] relative overflow-hidden flex flex-col">
+<div class="p-2 absolute top-0 left-0 right-0 flex justify-between z-10 bg-gradient-to-b from-[#0c0e12] to-transparent">
+<span class="font-label-mono text-[10px] text-on-surface-variant uppercase">Local Neighborhood</span>
+<button class="text-primary hover:text-primary-fixed transition-colors"><span class="material-symbols-outlined text-[16px]">open_in_full</span></button>
+</div>
+<!-- Abstract Graph Representation using CSS/Grid for SOC feel -->
+<div class="flex-1 relative flex items-center justify-center">
+<!-- SVG connecting lines (conceptual) -->
+<svg class="absolute inset-0 w-full h-full opacity-30" preserveaspectratio="none">
+<line stroke="#adc6ff" stroke-dasharray="2,2" stroke-width="1" x1="50%" x2="20%" y1="50%" y2="20%"></line>
+<line stroke="#ffb4ab" stroke-width="2" x1="50%" x2="80%" y1="50%" y2="30%"></line>
+<line stroke="#424754" stroke-width="1" x1="50%" x2="30%" y1="50%" y2="80%"></line>
+</svg>
+<!-- Nodes -->
+<div class="absolute top-[15%] left-[15%] flex flex-col items-center gap-1 group cursor-pointer">
+<div class="w-6 h-6 rounded-full bg-surface border border-primary flex items-center justify-center z-10"><span class="material-symbols-outlined text-[12px] text-primary">computer</span></div>
+<span class="font-label-mono text-[9px] text-on-surface-variant">LPT-882</span>
+</div>
+<div class="absolute top-[25%] right-[15%] flex flex-col items-center gap-1 group cursor-pointer">
+<div class="w-6 h-6 rounded-full bg-error/20 border border-error flex items-center justify-center z-10 shadow-[0_0_10px_rgba(255,180,171,0.3)]"><span class="material-symbols-outlined text-[12px] text-error">language</span></div>
+<span class="font-label-mono text-[9px] text-error">104.28.1.1</span>
+</div>
+<!-- Central Node -->
+<div class="w-10 h-10 rounded bg-primary/20 border-2 border-primary flex items-center justify-center z-10 shadow-[0_0_15px_rgba(77,142,255,0.4)]">
+<span class="material-symbols-outlined text-[20px] text-primary">person</span>
+</div>
+<div class="absolute bottom-[15%] left-[25%] flex flex-col items-center gap-1 group cursor-pointer">
+<div class="w-6 h-6 rounded-full bg-surface border border-outline-variant flex items-center justify-center z-10"><span class="material-symbols-outlined text-[12px] text-outline">folder_shared</span></div>
+<span class="font-label-mono text-[9px] text-on-surface-variant">FIN_DATA</span>
+</div>
+</div>
+</div>
+<!-- Details Section -->
+<div class="p-4 border-b border-outline-variant flex flex-col gap-3">
+<h4 class="font-label-mono text-[11px] text-on-surface-variant uppercase tracking-wider mb-1">Identity Metadata</h4>
+<div class="flex justify-between items-center py-1">
+<span class="text-body-sm text-outline">Department</span>
+<span class="font-label-mono text-label-mono text-on-surface">Engineering</span>
+</div>
+<div class="flex justify-between items-center py-1">
+<span class="text-body-sm text-outline">Title</span>
+<span class="font-label-mono text-label-mono text-on-surface">Senior Architect</span>
+</div>
+<div class="flex justify-between items-center py-1">
+<span class="text-body-sm text-outline">Primary Host</span>
+<a class="font-label-mono text-label-mono text-primary hover:underline flex items-center gap-1" href="#">LPT-882 <span class="material-symbols-outlined text-[12px]">open_in_new</span></a>
+</div>
+<div class="flex justify-between items-center py-1">
+<span class="text-body-sm text-outline">Auth Method</span>
+<span class="font-label-mono text-label-mono text-on-surface">MFA (Hardware)</span>
+</div>
+</div>
+<!-- Remediation Actions -->
+<div class="p-4 flex flex-col gap-3">
+<h4 class="font-label-mono text-[11px] text-on-surface-variant uppercase tracking-wider mb-1">Remediation Actions</h4>
+<button class="w-full bg-surface-container-high border border-outline-variant hover:border-error hover:bg-error/5 text-on-surface py-2 px-3 rounded flex items-center justify-between transition-all group">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] group-hover:text-error transition-colors">block</span>
+<span class="font-body-md font-medium">Disable Account</span>
+</div>
+<span class="material-symbols-outlined text-[16px] text-outline-variant group-hover:text-error">chevron_right</span>
+</button>
+<button class="w-full bg-surface-container-high border border-outline-variant hover:border-tertiary hover:bg-tertiary/5 text-on-surface py-2 px-3 rounded flex items-center justify-between transition-all group">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] group-hover:text-tertiary transition-colors">password</span>
+<span class="font-body-md font-medium">Force Credential Reset</span>
+</div>
+<span class="material-symbols-outlined text-[16px] text-outline-variant group-hover:text-tertiary">chevron_right</span>
+</button>
+<button class="w-full bg-surface-container-high border border-outline-variant hover:border-primary hover:bg-primary/5 text-on-surface py-2 px-3 rounded flex items-center justify-between transition-all group">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors">router</span>
+<span class="font-body-md font-medium">Isolate Primary Host</span>
+</div>
+<span class="material-symbols-outlined text-[16px] text-outline-variant group-hover:text-primary">chevron_right</span>
+</button>
+</div>
+</div>
+</section>
+</main>
+</div>
+</body></html>

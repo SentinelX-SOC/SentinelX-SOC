@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Aegis SOC - Overview</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "primary-fixed-dim": "#adc6ff",
+                    "error": "#ffb4ab",
+                    "on-tertiary-container": "#461f00",
+                    "secondary-fixed": "#6ffbbe",
+                    "tertiary-fixed-dim": "#ffb786",
+                    "on-secondary": "#003824",
+                    "on-primary-fixed-variant": "#004395",
+                    "on-error": "#690005",
+                    "on-primary": "#002e6a",
+                    "surface-container-lowest": "#0c0e12",
+                    "on-surface": "#e2e2e8",
+                    "on-tertiary-fixed": "#311400",
+                    "on-primary-fixed": "#001a42",
+                    "secondary": "#4edea3",
+                    "on-secondary-fixed-variant": "#005236",
+                    "inverse-on-surface": "#2f3035",
+                    "surface-container": "#1e2024",
+                    "on-surface-variant": "#c2c6d6",
+                    "tertiary": "#ffb786",
+                    "outline-variant": "#424754",
+                    "inverse-primary": "#005ac2",
+                    "tertiary-container": "#df7412",
+                    "on-tertiary-fixed-variant": "#723600",
+                    "surface-tint": "#adc6ff",
+                    "outline": "#8c909f",
+                    "on-secondary-fixed": "#002113",
+                    "primary-container": "#4d8eff",
+                    "surface-container-low": "#1a1c20",
+                    "primary": "#adc6ff",
+                    "background": "#111318",
+                    "inverse-surface": "#e2e2e8",
+                    "secondary-container": "#00a572",
+                    "on-tertiary": "#502400",
+                    "secondary-fixed-dim": "#4edea3",
+                    "surface-dim": "#111318",
+                    "surface-variant": "#333539",
+                    "on-background": "#e2e2e8",
+                    "surface-container-high": "#282a2e",
+                    "surface-container-highest": "#333539",
+                    "tertiary-fixed": "#ffdcc6",
+                    "primary-fixed": "#d8e2ff",
+                    "on-primary-container": "#00285d",
+                    "on-secondary-container": "#00311f",
+                    "surface-bright": "#37393e",
+                    "on-error-container": "#ffdad6",
+                    "error-container": "#93000a",
+                    "surface": "#111318"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "sidebar-width": "240px",
+                    "unit": "4px",
+                    "table-row-height": "40px",
+                    "container-padding": "24px",
+                    "sidebar-collapsed": "64px",
+                    "element-gap": "12px"
+            },
+            "fontFamily": {
+                    "body-md": ["Inter"],
+                    "label-mono": ["JetBrains Mono"],
+                    "headline-lg": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "body-sm": ["Inter"],
+                    "headline-md": ["Inter"],
+                    "data-tabular": ["Inter"],
+                    "headline-sm": ["Inter"]
+            },
+            "fontSize": {
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "label-mono": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500"}],
+                    "headline-lg": ["30px", {"lineHeight": "36px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "body-sm": ["12px", {"lineHeight": "18px", "fontWeight": "400"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "data-tabular": ["13px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "headline-sm": ["18px", {"lineHeight": "24px", "fontWeight": "600"}]
+            }
+          },
+        }
+      }
+    </script>
+<style>
+        .risk-gauge { background: conic-gradient(from 180deg at 50% 100%, #ffb4ab 0deg, #ffb4ab 108deg, #df7412 108deg, #df7412 180deg); }
+        .ml-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen flex">
+<!-- SideNavBar -->
+<nav class="bg-surface-container dark:bg-surface-container text-primary dark:text-primary docked left-0 h-full w-sidebar-width border-r border-outline-variant flat no shadows fixed top-0 flex flex-col z-40">
+<div class="p-container-padding pb-element-gap border-b border-outline-variant flex items-center gap-element-gap">
+<img alt="SOC Environment Logo" class="w-8 h-8 rounded" data-alt="A sleek, futuristic logo for a Security Operations Center environment. It features a stylized shield or eye motif composed of glowing blue neon lines against a dark charcoal background. The design is sharp, minimalist, and conveys an atmosphere of high-tech vigilance and advanced cyber defense, typical of a modern enterprise software icon." src="https://lh3.googleusercontent.com/aida-public/AB6AXuD04JTXB7HBPLH6k3ib79UK9TpfnTymqwY9mBKqeNy5ku0TZErG2mag4nE7OtfJIjPvtzQmFZvdYfD8kHuJeB4lswO4rRl29E0aVuJ-OyvwIPNQqUko6bermTloc-fVEkfqgdTAoFv3c6bVLCU2bdbXEgIBfHU7Y_SJ6wypWGRx9lAMy6lyhB7AcnkD4PoxjoJxKUmfEbNubkAhxoz6zMF5gqxIsQ6KPQszuxXiLFakOA1U1pcCh8Yrog"/>
+<div>
+<h1 class="font-headline-sm text-headline-sm font-black text-on-surface">Global Ops</h1>
+<p class="font-label-mono text-label-mono text-on-surface-variant">Production Environment</p>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto py-unit flex flex-col gap-unit">
+<a class="flex items-center gap-element-gap px-container-padding py-2 text-primary bg-primary-container/10 border-l-2 border-primary font-body-md text-body-md transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">dashboard</span> Overview
+            </a>
+<a class="flex items-center gap-element-gap px-container-padding py-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-body-md text-body-md transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined">analytics</span> Telemetry
+            </a>
+<a class="flex items-center gap-element-gap px-container-padding py-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-body-md text-body-md transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined">emergency_home</span> Alerts
+            </a>
+<a class="flex items-center gap-element-gap px-container-padding py-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-body-md text-body-md transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined">search_insights</span> Investigations
+            </a>
+<a class="flex items-center gap-element-gap px-container-padding py-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-body-md text-body-md transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined">account_tree</span> Attack Graph
+            </a>
+<a class="flex items-center gap-element-gap px-container-padding py-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-body-md text-body-md transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined">toll</span> Honeytokens
+            </a>
+<a class="flex items-center gap-element-gap px-container-padding py-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-body-md text-body-md transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined">build_circle</span> Remediation
+            </a>
+<a class="flex items-center gap-element-gap px-container-padding py-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-body-md text-body-md transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined">science</span> Simulation
+            </a>
+<a class="flex items-center gap-element-gap px-container-padding py-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-body-md text-body-md transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined">health_and_safety</span> System Health
+            </a>
+</div>
+<div class="border-t border-outline-variant p-container-padding py-unit flex flex-col gap-unit">
+<a class="flex items-center gap-element-gap px-unit py-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-body-md text-body-md transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined">help</span> Support
+            </a>
+<a class="flex items-center gap-element-gap px-unit py-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-body-md text-body-md transition-all duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined">settings</span> Settings
+            </a>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 ml-sidebar-width flex flex-col h-screen overflow-hidden">
+<!-- TopNavBar -->
+<header class="bg-surface dark:bg-surface text-primary dark:text-primary docked full-width top-0 border-b border-outline-variant dark:border-outline-variant flat no shadows flex justify-between items-center w-full px-container-padding h-14 shrink-0 z-30">
+<div class="flex items-center gap-container-padding">
+<span class="font-headline-md text-headline-md font-bold text-primary dark:text-primary">Aegis SOC</span>
+<div class="flex items-center gap-2 bg-surface-container-high rounded px-3 py-1">
+<span class="material-symbols-outlined text-outline-variant text-[18px]">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-body-sm font-body-sm text-on-surface placeholder-on-surface-variant w-64 p-0" placeholder="Search events, entities..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-element-gap">
+<div class="flex items-center gap-2 mr-4">
+<div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-secondary ml-pulse"></div><span class="font-label-mono text-label-mono text-secondary">ML Ready</span></div>
+<div class="w-px h-4 bg-outline-variant"></div>
+<div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-secondary"></div><span class="font-label-mono text-label-mono text-secondary">Connected</span></div>
+</div>
+<button class="text-on-surface-variant hover:bg-surface-container-high transition-colors p-2 rounded flex items-center justify-center">
+<span class="material-symbols-outlined">hub</span>
+</button>
+<button class="text-on-surface-variant hover:bg-surface-container-high transition-colors p-2 rounded flex items-center justify-center">
+<span class="material-symbols-outlined">monitor_heart</span>
+</button>
+<button class="text-on-surface-variant hover:bg-surface-container-high transition-colors p-2 rounded flex items-center justify-center">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<img alt="Analyst profile avatar" class="w-8 h-8 rounded-full ml-2 border border-outline-variant" data-alt="A small, circular avatar portrait of a professional female cybersecurity analyst in her 30s. She is wearing a neat, dark polo shirt and a headset. The lighting is low-key with a cool blue cast, suggesting a dark SOC environment. The portrait is sharply focused and hyper-realistic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC3zkT3Lp74uO_I-WSBrVS89i_ZUcB8DMaHOav7wZY-ZQH1i063qgv4CRRehwnz9G6yMxIQ2g6mgmK1ro0jw4bYdZHE7it9MlkSfYfZQniDluSeweOakTMeOCh_enggoBQwHDul0wotXtejwg6kr2JDQouBo4ewsST3Sr9MmMujy-A6keTAY_4t9TVhfF2szn1aHpyj4SxOO1Ci4Xoxqlzzm2vlgF9mCSDzJzyywT2jWomc8z4Arwdrfg"/>
+</div>
+</header>
+<!-- Dashboard Canvas -->
+<div class="flex-1 overflow-y-auto p-container-padding bg-background flex flex-col gap-container-padding">
+<!-- KPI Cards -->
+<section class="grid grid-cols-4 gap-element-gap">
+<div class="bg-surface-container p-4 rounded-lg border border-outline-variant flex flex-col gap-2">
+<span class="font-label-mono text-label-mono text-on-surface-variant uppercase">Events Processed</span>
+<span class="font-headline-lg text-headline-lg text-on-surface">1.24B</span>
+<span class="font-body-sm text-body-sm text-secondary flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">trending_up</span> +12% / 24h</span>
+</div>
+<div class="bg-surface-container p-4 rounded-lg border border-outline-variant flex flex-col gap-2">
+<span class="font-label-mono text-label-mono text-on-surface-variant uppercase">Active Alerts</span>
+<span class="font-headline-lg text-headline-lg text-on-surface">342</span>
+<span class="font-body-sm text-body-sm text-error flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">trending_up</span> +5% / 24h</span>
+</div>
+<div class="bg-surface-container p-4 rounded-lg border border-error-container bg-error-container/10 flex flex-col gap-2">
+<span class="font-label-mono text-label-mono text-error uppercase">Critical Alerts</span>
+<span class="font-headline-lg text-headline-lg text-error">12</span>
+<span class="font-body-sm text-body-sm text-error flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">warning</span> Action Required</span>
+</div>
+<div class="bg-surface-container p-4 rounded-lg border border-outline-variant flex flex-col gap-2">
+<span class="font-label-mono text-label-mono text-on-surface-variant uppercase">Entities Under Inv.</span>
+<span class="font-headline-lg text-headline-lg text-on-surface">45</span>
+<span class="font-body-sm text-body-sm text-outline flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">group</span> Users &amp; IPs</span>
+</div>
+</section>
+<!-- Main Content Grid -->
+<section class="grid grid-cols-3 gap-element-gap h-[400px]">
+<!-- Threat Overview -->
+<div class="col-span-1 bg-surface-container rounded-lg border border-outline-variant p-4 flex flex-col">
+<h2 class="font-headline-sm text-headline-sm text-on-surface mb-4">Threat Overview</h2>
+<div class="flex-1 flex flex-col items-center justify-center gap-4 relative">
+<div class="w-48 h-24 overflow-hidden relative">
+<div class="w-48 h-48 rounded-full risk-gauge absolute top-0 left-0"></div>
+<div class="w-40 h-40 rounded-full bg-surface-container absolute top-4 left-4 flex items-end justify-center pb-2">
+<span class="font-headline-lg text-headline-lg text-error">84</span>
+</div>
+</div>
+<span class="font-label-mono text-label-mono text-error">CRITICAL RISK POSTURE</span>
+</div>
+</div>
+<!-- Live Activity Stream -->
+<div class="col-span-2 bg-surface-container rounded-lg border border-outline-variant flex flex-col overflow-hidden">
+<div class="p-4 border-b border-outline-variant flex justify-between items-center bg-surface-container-low">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Live Activity Stream</h2>
+<span class="font-label-mono text-label-mono text-secondary ml-pulse flex items-center gap-1"><span class="material-symbols-outlined text-[16px]">stream</span> Live</span>
+</div>
+<div class="overflow-x-auto flex-1">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="border-b border-outline-variant bg-surface-container text-on-surface-variant font-label-mono text-label-mono">
+<th class="p-2 font-medium">Time</th>
+<th class="p-2 font-medium">Type</th>
+<th class="p-2 font-medium">Source</th>
+<th class="p-2 font-medium">Score</th>
+<th class="p-2 font-medium">Conf</th>
+</tr>
+</thead>
+<tbody class="font-data-tabular text-data-tabular">
+<tr class="h-table-row-height border-b border-outline-variant/50 hover:bg-surface-container-high border-l-2 border-l-error bg-error/5">
+<td class="p-2 text-on-surface-variant">10:42:01</td>
+<td class="p-2 text-on-surface">Anomalous Logon</td>
+<td class="p-2 text-on-surface font-label-mono">192.168.1.105</td>
+<td class="p-2 text-error font-bold">92</td>
+<td class="p-2 text-on-surface-variant">98%</td>
+</tr>
+<tr class="h-table-row-height border-b border-outline-variant/50 hover:bg-surface-container-high border-l-2 border-l-transparent">
+<td class="p-2 text-on-surface-variant">10:41:55</td>
+<td class="p-2 text-on-surface">Privilege Escalation Attempt</td>
+<td class="p-2 text-on-surface font-label-mono">SRV-DC-01</td>
+<td class="p-2 text-tertiary-container">75</td>
+<td class="p-2 text-on-surface-variant">85%</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
+</div>
+</main>
+</body></html>

@@ -1,0 +1,19 @@
+# Role & Architecture Standard
+You are an expert Python Backend Engineer building an Autonomous SOC Threat Defense Simulator using FastAPI, NetworkX, LangGraph, SQLModel, and Pydantic v2.
+
+# General Coding Rules
+- Python Version: Python 3.11+
+- Async First: Use async/await for network operations, database sessions, and WebSockets.
+- Strict Typing: Include complete type hints for function signatures and parameters.
+- Validation: Always use Pydantic v2 schemas for API requests and response validation.
+
+# Directory Rules
+- Keep code clean and modular. Never mix API routes, business logic, or models in a single file.
+- `app/models/`: SQLModel entities and Pydantic schemas ONLY.
+- `app/api/`: FastAPI APIRouter endpoints ONLY.
+- `app/services/`: Core business logic (Graph operations, Anomaly Detection, LangGraph agent, Ingestion).
+- `app/simulation/`: Replay engine and async playback control tasks.
+
+# Database & Graph Guidelines
+- Use SQLModel for database interactions (SQLAlchemy + Pydantic).
+- For NetworkX graph operations, keep execution efficient and export node/edge formats structured for React Flow / D3.js.

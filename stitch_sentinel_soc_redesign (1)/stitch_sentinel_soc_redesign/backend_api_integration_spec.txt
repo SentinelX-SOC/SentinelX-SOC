@@ -1,0 +1,40 @@
+# Autonomous SOC Analyst API Integration Layer
+
+## Base Configuration
+- API_BASE_URL: `/api/v1`
+- WS_URL: `/ws/security-events`
+
+## Endpoints
+
+### Health & ML
+- `GET /health/backend`: Backend connectivity & availability.
+- `GET /health/ml`: ML service status (reachable, ready, inference_ready, status).
+
+### Telemetry & Events
+- `POST /api/v1/events`: Ingest new telemetry (TelemetryEventCreate).
+- `GET /api/v1/events/stream`: (via WebSocket) Real-time broadcast.
+
+### Alerts & Incidents
+- `GET /api/v1/alerts`: List alerts with filtering (severity, risk, status).
+- `GET /api/v1/alerts/{id}`: Detailed alert information.
+- `POST /api/v1/alerts/{id}/triage`: Update status/assign.
+
+### Investigations & Graph
+- `GET /api/v1/investigations`: List active investigations.
+- `GET /api/v1/graph/query`: Search entities/relationships.
+- `GET /api/v1/graph/entity/{id}`: Detail for a specific node.
+
+### Honeytokens
+- `GET /api/v1/honeytokens`: List all tokens.
+- `POST /api/v1/honeytokens/deploy`: Create new token.
+- `POST /api/v1/honeytokens/{id}/trigger`: Test/simulate trigger.
+
+### Remediation & Simulation
+- `GET /api/v1/remediation/actions`: List history.
+- `POST /api/v1/simulation/start`: Trigger red-team scenario.
+- `POST /api/v1/simulation/stop`: Halt current simulation.
+
+## Canonical Data
+- Risk Score: 0-100 (integer)
+- Anomaly Score: 0.0-1.0 (float)
+- Confidence: 0-100 (percentage)

@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+pandas
+networkx
+sqlmodel
+pydantic
+pydantic-settings
+python-dotenv
+httpx
+pytest
