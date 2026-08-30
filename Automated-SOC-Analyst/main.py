@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth.router import router as auth_router
+from app.api.agent_analysis import router as agent_analysis_router
 from app.api.dev import router as dev_router
 from app.api.events import router as events_router
 from app.api.graph import router as graph_router
@@ -40,6 +41,7 @@ app.include_router(graph_router, prefix=settings.api_v1_prefix)
 app.include_router(honeytoken_router, prefix=settings.api_v1_prefix)
 app.include_router(dev_router, prefix=settings.api_v1_prefix)  # DEVELOPMENT / TEST ONLY
 app.include_router(events_router, prefix=settings.api_v1_prefix)
+app.include_router(agent_analysis_router, prefix=settings.api_v1_prefix)
 app.include_router(auth_router, prefix=settings.api_v1_prefix)
 app.include_router(websocket_router)
 
