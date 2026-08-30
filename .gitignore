@@ -7,3 +7,4 @@ autonomous-threat-defense/data/raw/
 autonomous-threat-defense/soc.db
 autonomous-threat-defense/data/processed/*.joblib
 autonomous-threat-defense/data/processed/*.parquet
+soc.db

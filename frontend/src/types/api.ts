@@ -133,6 +133,15 @@ export interface MLPredictionResponse {
   confidence: number;
 }
 
+export interface CostEstimate {
+  estimate_label: 'ESTIMATED';
+  event_count: number;
+  incident_count: number;
+  cost_per_event: number;
+  cost_per_incident: number | null;
+  total_cost: number;
+}
+
 export interface PolicyDecisionRead {
   allowed: boolean;
   action: string | null;
@@ -177,6 +186,34 @@ export interface EventPipelineResult {
   policy: PolicyDecisionRead;
   remediation: RemediationActionRead | null;
   device: DeviceStateRead | null;
+  estimated_cost?: CostEstimate | null;
+}
+
+export interface TelemetryEventBatchResult {
+  total: number;
+  processed: number;
+  failed: number;
+  alerts: number;
+  remediations: number;
+  processing_time_ms: number;
+  errors: { index: number; error: string }[];
+  estimated_cost?: CostEstimate | null;
+}
+
+export type ReviewStatus = 'pending' | 'approved' | 'rejected' | 'escalated';
+
+export interface HumanReviewRead {
+  id: string;
+  event_id: string;
+  alert_id: string | null;
+  action_type: string | null;
+  risk_score: number;
+  reason: string;
+  status: ReviewStatus;
+  created_at: string;
+  reviewed_by: string | null;
+  review_comment: string | null;
+  reviewed_at: string | null;
 }
 
 export interface HealthRead {

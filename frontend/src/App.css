@@ -811,6 +811,53 @@
   border: 1px dashed rgba(140, 144, 159, 0.25);
 }
 
+.result-box-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.cost-estimate-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: rgba(12, 14, 18, 0.35);
+  border: 1px solid rgba(140, 144, 159, 0.16);
+}
+
+.cost-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+}
+
+.cost-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(30, 32, 36, 0.65);
+  border: 1px solid rgba(140, 144, 159, 0.12);
+  color: var(--on-surface-variant);
+  font-size: 0.72rem;
+}
+
+.cost-row strong {
+  font-size: 0.82rem;
+  color: var(--on-surface);
+}
+
+.cost-row.total {
+  grid-column: 1 / -1;
+  background: rgba(173, 198, 255, 0.06);
+  border-color: rgba(173, 198, 255, 0.18);
+}
+
 .alert-panel {
   display: flex;
   flex-direction: column;

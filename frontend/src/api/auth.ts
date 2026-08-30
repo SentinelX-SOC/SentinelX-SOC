@@ -1,19 +1,21 @@
 import { apiRequest } from './client';
 
 export interface AuthenticatedUser {
+  id?: string;
   username: string;
-  role: 'analyst';
+  email?: string;
+  role: 'admin' | 'analyst' | 'viewer';
 }
 
 export interface LoginResponse {
   user: AuthenticatedUser;
 }
 
-export async function login(username: string, password: string): Promise<AuthenticatedUser> {
+export async function login(email: string, password: string): Promise<AuthenticatedUser> {
   const result = await apiRequest<LoginResponse>('/api/v1/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ email, password }),
   });
   return result.user;
 }

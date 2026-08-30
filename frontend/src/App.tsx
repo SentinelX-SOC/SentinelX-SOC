@@ -33,11 +33,12 @@ import { ingestEvent } from './api/events';
 import { getHealth } from './api/health';
 import { getGraph, getGraphNeighbors } from './api/graph';
 import { deployHoneytoken, listHoneytokenEvents, listHoneytokens, triggerHoneytoken } from './api/honeytokens';
+import { decideReview, listReviews } from './api/reviews';
 import { getSimulationStatus, pauseSimulation, resumeSimulation, startSimulation, stopSimulation } from './api/simulation';
 import { SocWebSocket } from './api/websocket';
-import type { AlertRead, EventPipelineResult, GraphRead, HealthRead, HoneytokenEventRead, HoneytokenRead, SimulationStatusRead, TelemetryEventCreate, TelemetryEventRead } from './types/api';
+import type { AlertRead, EventPipelineResult, GraphRead, HealthRead, HoneytokenEventRead, HoneytokenRead, HumanReviewRead, SimulationStatusRead, TelemetryEventCreate, TelemetryEventRead } from './types/api';
 
-type Screen = 'overview' | 'telemetry' | 'graph' | 'honeytokens' | 'simulation' | 'health';
+type Screen = 'overview' | 'telemetry' | 'graph' | 'honeytokens' | 'simulation' | 'health' | 'reviews';
 
 type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 type LiveEvent = TelemetryEventRead & { risk_score?: number; anomaly_score?: number; confidence?: number; detection_source?: string };
@@ -47,6 +48,7 @@ const navItems = [
   { id: 'overview', label: 'Overview', icon: Home, group: 'Command' },
   { id: 'graph', label: 'Attack Graph', icon: Network, group: 'Investigate' },
   { id: 'telemetry', label: 'Telemetry', icon: Activity, group: 'Investigate' },
+  { id: 'reviews', label: 'Human Review', icon: Check, group: 'Operations' },
   { id: 'honeytokens', label: 'Honeytokens', icon: ShieldAlert, group: 'Operations' },
   { id: 'simulation', label: 'Simulation', icon: SquareTerminal, group: 'Operations' },
   { id: 'health', label: 'System Health', icon: HeartPulse, group: 'Operations' },
@@ -65,6 +67,8 @@ function App() {
   const [authUser, setAuthUser] = useState<AuthenticatedUser | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [activeScreen, setActiveScreen] = useState<Screen>('overview');
   const [health, setHealth] = useState<HealthRead | null>(null);
   const [graph, setGraph] = useState<GraphRead | null>(null);
@@ -80,6 +84,9 @@ function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [eventForm, setEventForm] = useState<TelemetryEventCreate>(emptyEventForm);
   const [eventSubmission, setEventSubmission] = useState<{ loading: boolean; error: string | null; result: EventPipelineResult | null }>({ loading: false, error: null, result: null });
+  const [reviews, setReviews] = useState<HumanReviewRead[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsError, setReviewsError] = useState<string | null>(null);
   const socketRef = useRef<SocWebSocket | null>(null);
 
   useEffect(() => {
@@ -94,20 +101,25 @@ function App() {
       return undefined;
     }
     const load = async () => {
+      setReviewsLoading(true);
+      setReviewsError(null);
       try {
-        const [healthRes, graphRes, honeyRes, simRes] = await Promise.allSettled([
+        const [healthRes, graphRes, honeyRes, simRes, reviewRes] = await Promise.allSettled([
           getHealth(),
           getGraph(),
           listHoneytokens(),
           getSimulationStatus(),
+          listReviews(),
         ]);
         const failures: string[] = [];
         if (healthRes.status === 'fulfilled') setHealth(healthRes.value); else failures.push('health');
         if (graphRes.status === 'fulfilled') setGraph(graphRes.value); else failures.push('graph');
         if (honeyRes.status === 'fulfilled') setHoneytokens(honeyRes.value); else failures.push('honeytokens');
         if (simRes.status === 'fulfilled') setSimulation(simRes.value); else failures.push('simulation');
+        if (reviewRes.status === 'fulfilled') setReviews(reviewRes.value); else setReviewsError(reviewRes.reason instanceof Error ? reviewRes.reason.message : 'Reviews could not be loaded');
         setLoadError(failures.length ? `Unavailable backend resources: ${failures.join(', ')}` : null);
       } finally {
+        setReviewsLoading(false);
         setLoading(false);
       }
     };
@@ -200,6 +212,8 @@ function App() {
         return <SimulationPanel simulation={simulation} setSimulation={setSimulation} />;
       case 'health':
         return <HealthPanel health={health} socketState={socketState} />;
+      case 'reviews':
+        return <ReviewPanel reviews={reviews} loading={reviewsLoading} error={reviewsError} onRefresh={async () => { setReviewsLoading(true); setReviewsError(null); try { setReviews(await listReviews()); } catch (error) { setReviewsError(error instanceof Error ? error.message : 'Reviews could not be loaded'); } finally { setReviewsLoading(false); } }} onDecision={async (reviewId, action, comment) => { const next = await decideReview(reviewId, action, comment); setReviews((prev) => prev.map((entry) => entry.id === next.id ? next : entry)); setReviews(await listReviews()); }} userRole={authUser?.role} />;
       default:
         return <OverviewPanel health={health} graph={graph} honeytokens={honeytokens} liveEvents={liveEvents} lastAlert={lastAlert} topRisk={topRisk} simulation={simulation} remediationActivity={remediationActivity} />;
     }
@@ -210,7 +224,7 @@ function App() {
   }
 
   if (!authUser) {
-    return <LoginScreen error={authError} onLogin={async (username, password) => { setAuthError(null); try { setAuthUser(await login(username, password)); } catch { setAuthError('Invalid username or password'); } }} />;
+    return <LoginScreen error={authError} email={loginEmail} password={loginPassword} onEmailChange={setLoginEmail} onPasswordChange={setLoginPassword} onLogin={async (email, password) => { setAuthError(null); try { setAuthUser(await login(email, password)); } catch { setAuthError('Invalid email or password'); } }} />;
   }
 
   return (
@@ -259,8 +273,8 @@ function App() {
             </div>
             <div className="identity-pill">
               <div className="identity-dot" />
-              <div><strong>{authUser.username}</strong><span>{authUser.role}</span></div>
-              <button className="text-btn" onClick={async () => { await logout().catch(() => undefined); setAuthUser(null); }} aria-label="Sign out">Sign out</button>
+              <div><strong>{authUser.email || authUser.username}</strong><span>{authUser.role}</span></div>
+              <button className="text-btn" onClick={async () => { await logout().catch(() => undefined); setAuthUser(null); setLoginEmail(''); setLoginPassword(''); }} aria-label="Sign out">Sign out</button>
             </div>
             <div className="status-pill neutral">
               <Database size={14} />
@@ -404,6 +418,8 @@ function OverviewPanel({ health, graph, honeytokens, liveEvents, lastAlert, topR
 
 function TelemetryPanel({ events, eventForm, setEventForm, onSubmit, submission }: { events: LiveEvent[]; eventForm: TelemetryEventCreate; setEventForm: React.Dispatch<React.SetStateAction<TelemetryEventCreate>>; onSubmit: (event: React.FormEvent<HTMLFormElement>) => Promise<void>; submission: { loading: boolean; error: string | null; result: EventPipelineResult | null }; }) {
   const [selectedEvent, setSelectedEvent] = useState<LiveEvent | null>(null);
+  const costEstimate = submission.result?.estimated_cost;
+
   return (
     <Panel title="Telemetry explorer">
       <div className="panel-context"><span className="chip success">LIVE</span><span className="muted">Showing events observed in this browser session. Historical event retrieval is not exposed by the backend.</span></div>
@@ -457,7 +473,26 @@ function TelemetryPanel({ events, eventForm, setEventForm, onSubmit, submission 
           <button type="submit" className="action-btn" disabled={submission.loading}>{submission.loading ? 'Submitting...' : 'Ingest event'}</button>
         </div>
         {submission.error ? <div className="empty-box alert">{submission.error}</div> : null}
-        {submission.result ? <div className="result-box"><strong>Pipeline result:</strong> risk {submission.result.risk_score} / policy {submission.result.policy.action ?? 'n/a'}</div> : null}
+        {submission.result ? (
+          <div className="result-box-wrap">
+            <div className="result-box"><strong>Pipeline result:</strong> risk {submission.result.risk_score} / policy {submission.result.policy.action ?? 'n/a'}</div>
+            {costEstimate ? (
+              <div className="cost-estimate-box">
+                <div className="row-between">
+                  <span className="eyebrow">Estimated cost</span>
+                  <span className="chip neutral">{costEstimate.estimate_label}</span>
+                </div>
+                <div className="cost-grid">
+                  <div className="cost-row"><span>Events processed</span><strong>{costEstimate.event_count}</strong></div>
+                  <div className="cost-row"><span>Incident count</span><strong>{costEstimate.incident_count}</strong></div>
+                  <div className="cost-row"><span>Estimated cost per event</span><strong>{formatCurrency(costEstimate.cost_per_event)}</strong></div>
+                  <div className="cost-row"><span>Estimated cost per incident</span><strong>{costEstimate.cost_per_incident == null ? '—' : formatCurrency(costEstimate.cost_per_incident)}</strong></div>
+                  <div className="cost-row total"><span>Estimated total run cost</span><strong>{formatCurrency(costEstimate.total_cost)}</strong></div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </form>
       <div className="table-shell">
         <table>
@@ -648,6 +683,76 @@ function SimulationPanel({ simulation, setSimulation }: { simulation: Simulation
   );
 }
 
+function ReviewPanel({ reviews, loading, error, onRefresh, onDecision, userRole }: { reviews: HumanReviewRead[]; loading: boolean; error: string | null; onRefresh: () => void; onDecision: (reviewId: string, action: 'approve' | 'reject' | 'escalate', comment?: string) => Promise<void>; userRole?: string; }) {
+  const [decisionComment, setDecisionComment] = useState<Record<string, string>>({});
+  const [pendingAction, setPendingAction] = useState<Record<string, 'approve' | 'reject' | 'escalate' | null>>({});
+  const canDecide = userRole === 'admin' || userRole === 'analyst';
+
+  return (
+    <Panel title="Pending Reviews">
+      <div className="panel-actions">
+        <span className="muted">Analyst decision queue for high-risk automated actions.</span>
+        <button className="action-btn" onClick={onRefresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''} /> {loading ? 'Refreshing...' : 'Refresh'}</button>
+      </div>
+      {error ? <div className="notice error"><CircleAlert size={15} />{error}</div> : null}
+      <div className="review-list">
+        {loading && !reviews.length ? <div className="empty-box">Loading review queue…</div> : reviews.length ? reviews.map((review) => (
+          <div key={review.id} className="review-card">
+            <div className="row-between">
+              <div>
+                <span className="eyebrow">Review #{review.id.slice(0, 8)}</span>
+                <h3>{review.action_type ?? 'manual review'}</h3>
+              </div>
+              <span className={`chip ${review.status === 'approved' ? 'success' : review.status === 'rejected' ? 'neutral' : review.status === 'escalated' ? 'warn' : 'alert'}`}>{review.status}</span>
+            </div>
+            <div className="detail-grid review-grid">
+              <span>Incident / Event <strong className="mono">{review.event_id}</strong></span>
+              <span>Alert <strong className="mono">{review.alert_id ?? 'n/a'}</strong></span>
+              <span>Risk <strong>{Math.round(review.risk_score)} / 100</strong></span>
+              <span>Created <strong className="mono">{new Date(review.created_at).toLocaleString()}</strong></span>
+              <span>Status <strong>{review.status}</strong></span>
+              <span>Reviewer <strong>{review.reviewed_by ?? 'pending'}</strong></span>
+            </div>
+            <div className="review-summaries">
+              <div><span className="eyebrow">Evidence / reason</span><p>{review.reason}</p></div>
+              <div><span className="eyebrow">Decision summary</span><p>{review.review_comment ?? 'No analyst decision recorded yet.'}</p></div>
+            </div>
+            {canDecide && (
+              <>
+                <label className="review-comment">
+                  <span>Analyst comment</span>
+                  <textarea value={decisionComment[review.id] ?? ''} onChange={(event) => setDecisionComment((prev) => ({ ...prev, [review.id]: event.target.value }))} placeholder="Add a brief decision note…" rows={3} />
+                </label>
+                <div className="button-row review-actions">
+                  {(['approve', 'reject', 'escalate'] as const).map((action) => (
+                    <button
+                      key={action}
+                      className="action-btn"
+                      disabled={pendingAction[review.id] === action || review.status !== 'pending'}
+                      onClick={async () => {
+                        setPendingAction((prev) => ({ ...prev, [review.id]: action }));
+                        try {
+                          await onDecision(review.id, action, decisionComment[review.id]);
+                        } finally {
+                          setPendingAction((prev) => ({ ...prev, [review.id]: null }));
+                        }
+                      }}
+                    >
+                      {pendingAction[review.id] === action ? 'Working...' : action}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            {!canDecide && <div className="notice neutral">Your {userRole} role cannot perform review actions. Contact an administrator if this is incorrect.</div>}
+            {review.reviewed_at ? <div className="review-footer">Decision recorded by {review.reviewed_by ?? 'unknown'} at {new Date(review.reviewed_at).toLocaleString()}</div> : null}
+          </div>
+        )) : <div className="empty-box">No pending human review items</div>}
+      </div>
+    </Panel>
+  );
+}
+
 function HealthPanel({ health, socketState }: { health: HealthRead | null; socketState: ConnectionState }) {
   const backendState = health?.status === 'ok' ? 'healthy' : 'unavailable';
   const mlState = health ? (health.ml_service_usable ? 'healthy' : health.ml_service_reachable ? 'degraded' : 'unavailable') : 'unknown';
@@ -716,22 +821,20 @@ function AuthLoading() {
   return <main className="auth-shell"><section className="auth-card loading-state"><LoaderCircle className="spin" size={20} /><span>Restoring secure session</span></section></main>;
 }
 
-function LoginScreen({ error, onLogin }: { error: string | null; onLogin: (username: string, password: string) => Promise<void> }) {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+function LoginScreen({ error, email, password, onEmailChange, onPasswordChange, onLogin }: { error: string | null; email: string; password: string; onEmailChange: (value: string) => void; onPasswordChange: (value: string) => void; onLogin: (email: string, password: string) => Promise<void> }) {
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitting(true);
     try {
-      await onLogin(username, password);
+      await onLogin(email, password);
     } finally {
       setSubmitting(false);
     }
   };
 
-  return <main className="auth-shell"><section className="auth-card" aria-labelledby="login-title"><div className="auth-brand"><div className="brand-mark">OS</div><div><div className="brand-name">Obsidian Sentinel</div><div className="brand-subtitle">SOC Command</div></div></div><div className="auth-heading"><span className="eyebrow">Secure access</span><h1 id="login-title">Sign in to operations</h1><p>Authenticate to access the live SOC workspace.</p></div><form className="auth-form" onSubmit={(event) => void submit(event)}><label><span>Username</span><input type="email" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required /></label><label><span>Password</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error ? <div className="notice error" role="alert"><CircleAlert size={15} />{error}</div> : null}<button className="action-btn auth-submit" type="submit" disabled={submitting}>{submitting ? <LoaderCircle className="spin" size={15} /> : <Shield size={15} />}{submitting ? 'Signing in...' : 'Sign in'}</button></form><div className="auth-footnote">Temporary development authentication · analyst role</div></section></main>;
+  return <main className="auth-shell"><section className="auth-card" aria-labelledby="login-title"><div className="auth-brand"><div className="brand-mark">OS</div><div><div className="brand-name">Obsidian Sentinel</div><div className="brand-subtitle">SOC Command</div></div></div><div className="auth-heading"><span className="eyebrow">Secure access</span><h1 id="login-title">Sign in to operations</h1><p>Authenticate to access the live SOC workspace.</p></div><form className="auth-form" onSubmit={(event) => void submit(event)}><label><span>Email</span><input type="email" value={email} onChange={(event) => onEmailChange(event.target.value)} autoComplete="email" required /></label><label><span>Password</span><input type="password" value={password} onChange={(event) => onPasswordChange(event.target.value)} autoComplete="current-password" required /></label>{error ? <div className="notice error" role="alert"><CircleAlert size={15} />{error}</div> : null}<button className="action-btn auth-submit" type="submit" disabled={submitting}>{submitting ? <LoaderCircle className="spin" size={15} /> : <Shield size={15} />}{submitting ? 'Signing in...' : 'Sign in'}</button></form><div className="auth-footnote">Enterprise multi-user authentication · role-based access control</div></section></main>;
 }
 
 function getEventSeverity(event: TelemetryEventRead) {
@@ -744,6 +847,18 @@ function riskClass(risk: number) {
   if (risk >= 80) return 'critical';
   if (risk >= 55) return 'warn';
   return 'good';
+}
+
+function formatCurrency(value: number | null | undefined) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return '—';
+  }
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(value);
 }
 
 export default App;
