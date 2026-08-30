@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.deps import get_event_pipeline, get_multi_agent_service
 from app.models.schemas import (
     BatchEventError,
+    CostEstimate,
     EventPipelineResult,
     PolicyDecisionRead,
     TelemetryEventBatchCreate,
@@ -18,6 +19,7 @@ from app.models.schemas import (
     TelemetryEventCreate,
     TelemetryEventRead,
 )
+from app.services.cost_estimation import CostEstimateService
 from app.services.event_pipeline import EventPipeline
 
 router = APIRouter(prefix="/events", tags=["events"])
@@ -25,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 BATCH_CHUNK_SIZE = 100
 _MAX_REPORTED_ERRORS = 100
+cost_service = CostEstimateService()
 
 
 @router.post("", response_model=EventPipelineResult)
@@ -91,6 +94,13 @@ async def ingest_event_batch(
         remediations=remediations,
         processing_time_ms=elapsed_ms,
         errors=errors,
+        estimated_cost=CostEstimate.from_run(
+            event_count=processed,
+            incident_count=alerts,
+            enabled=settings.cost_estimation_enabled,
+            cost_per_event_usd=settings.cost_per_event_usd,
+            cost_per_incident_usd=settings.cost_per_incident_usd,
+        ),
     )
 
 

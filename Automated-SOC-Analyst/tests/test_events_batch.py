@@ -82,6 +82,45 @@ def test_empty_batch_returns_zero_counts(client: TestClient, skip_persist: None)
     assert body["errors"] == []
 
 
+def test_batch_cost_estimate_is_zero_by_default(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, skip_persist: None
+) -> None:
+    monkeypatch.setattr("app.api.events.settings.cost_estimation_enabled", False)
+    monkeypatch.setattr("app.api.events.settings.cost_per_event_usd", 0.0)
+    monkeypatch.setattr("app.api.events.settings.cost_per_incident_usd", 0.0)
+
+    response = client.post("/api/v1/events/batch", json={"events": [_event(), _event(user="U002")]})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["estimated_cost"]["estimate_label"] == "ESTIMATED"
+    assert body["estimated_cost"]["total_cost"] == pytest.approx(0.0)
+    assert body["estimated_cost"]["cost_per_event"] == pytest.approx(0.0)
+    assert body["estimated_cost"]["cost_per_incident"] is None
+
+
+def test_batch_cost_estimate_uses_configured_unit_costs(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, skip_persist: None
+) -> None:
+    monkeypatch.setattr("app.api.events.settings.cost_estimation_enabled", True)
+    monkeypatch.setattr("app.api.events.settings.cost_per_event_usd", 0.25)
+    monkeypatch.setattr("app.api.events.settings.cost_per_incident_usd", 1.5)
+    monkeypatch.setattr(ml_service, "predict", _ml_normal)
+
+    response = client.post(
+        "/api/v1/events/batch",
+        json={"events": [_event(user="U001"), _event(user="U002")]},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["processed"] == 2
+    assert body["estimated_cost"]["event_count"] == 2
+    assert body["estimated_cost"]["cost_per_event"] == pytest.approx(0.25)
+    assert body["estimated_cost"]["cost_per_incident"] is None
+    assert body["estimated_cost"]["total_cost"] == pytest.approx(0.5)
+
+
 def test_one_event_batch_processes_through_pipeline(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, skip_persist: None
 ) -> None:

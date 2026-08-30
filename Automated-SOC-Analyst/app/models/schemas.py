@@ -104,6 +104,12 @@ class ReviewStatus(str, Enum):
     ESCALATED = "escalated"
 
 
+class UserRole(str, Enum):
+    ADMIN = "admin"
+    ANALYST = "analyst"
+    VIEWER = "viewer"
+
+
 class HoneytokenType(str, Enum):
     CREDENTIAL = "credential"
     FILE = "file"
@@ -226,6 +232,19 @@ class RemediationAction(SQLModel, table=True):
     completed_at: datetime | None = SQLField(default=None)
 
     alert: Alert | None = Relationship(back_populates="remediations")
+
+
+class User(SQLModel, table=True):
+    """Persistent application user used for login, role control, and review audit."""
+
+    __tablename__ = "users"
+
+    id: UUID = SQLField(default_factory=uuid4, primary_key=True)
+    email: str = SQLField(index=True, unique=True, max_length=255)
+    password_hash: str = SQLField(max_length=512)
+    role: UserRole = SQLField(default=UserRole.VIEWER, index=True)
+    is_active: bool = SQLField(default=True, index=True)
+    created_at: datetime = SQLField(default_factory=utc_now, index=True)
 
 
 class HumanReview(SQLModel, table=True):
@@ -540,6 +559,36 @@ class ReviewDecisionRequest(BaseModel):
     comment: str | None = Field(default=None, max_length=2048)
 
 
+class UserCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=1, max_length=255)
+    role: UserRole = UserRole.VIEWER
+
+
+class UserRoleUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: UserRole
+
+
+class UserStatusUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    is_active: bool
+
+
+class UserRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    email: str
+    role: UserRole
+    is_active: bool
+    created_at: datetime
+
+
 # ---------------------------------------------------------------------------
 # Pydantic v2 API schemas — Health & simulation control
 # ---------------------------------------------------------------------------
@@ -766,6 +815,42 @@ class BatchEventError(BaseModel):
     error: str
 
 
+class CostEstimate(BaseModel):
+    """Deterministic, estimate-only model for usage and cost discussion."""
+
+    estimate_label: Literal["ESTIMATED"] = "ESTIMATED"
+    event_count: int = Field(ge=0)
+    incident_count: int = Field(ge=0)
+    cost_per_event: float = Field(default=0.0, ge=0.0)
+    cost_per_incident: float | None = Field(default=None, ge=0.0)
+    total_cost: float = Field(default=0.0, ge=0.0)
+
+    @classmethod
+    def from_run(
+        cls,
+        *,
+        event_count: int,
+        incident_count: int = 0,
+        enabled: bool = False,
+        cost_per_event_usd: float = 0.0,
+        cost_per_incident_usd: float = 0.0,
+    ) -> "CostEstimate":
+        event_cost = float(cost_per_event_usd) if enabled else 0.0
+        incident_cost = (
+            float(cost_per_incident_usd) if enabled and incident_count > 0 else None
+        )
+        total_cost = max(0.0, float(event_count) * event_cost)
+        if incident_cost is not None:
+            total_cost += max(0.0, float(incident_count)) * incident_cost
+        return cls(
+            event_count=max(0, int(event_count)),
+            incident_count=max(0, int(incident_count)),
+            cost_per_event=event_cost,
+            cost_per_incident=incident_cost,
+            total_cost=total_cost,
+        )
+
+
 class TelemetryEventBatchResult(BaseModel):
     """Summary of a batch ingestion run through EventPipeline."""
 
@@ -776,6 +861,7 @@ class TelemetryEventBatchResult(BaseModel):
     remediations: int = Field(ge=0)
     processing_time_ms: int = Field(ge=0)
     errors: list[BatchEventError] = Field(default_factory=list)
+    estimated_cost: CostEstimate = Field(default_factory=lambda: CostEstimate.from_run(event_count=0))
 
 
 class AgentAnalysisRead(BaseModel):
@@ -792,3 +878,4 @@ class AgentAnalysisRead(BaseModel):
     remediation_dry_run: bool = True
     agents: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+    estimated_cost: CostEstimate = Field(default_factory=lambda: CostEstimate.from_run(event_count=0))

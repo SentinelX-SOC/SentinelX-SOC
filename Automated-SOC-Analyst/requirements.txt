@@ -8,3 +8,4 @@ pydantic-settings
 python-dotenv
 httpx
 pytest
+bcrypt==5.0.0

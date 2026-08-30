@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_review_action
 from app.auth.schemas import AuthenticatedUser
 from app.core.deps import get_review_service
 from app.models.schemas import HumanReviewRead, ReviewDecisionRequest, ReviewStatus
@@ -15,7 +15,9 @@ router = APIRouter(prefix="/reviews", tags=["reviews"])
 async def list_reviews(
     status: ReviewStatus | None = None,
     review_service: HumanReviewService = Depends(get_review_service),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> list[HumanReviewRead]:
+    _ = user
     return review_service.list(status=status)
 
 
@@ -23,7 +25,9 @@ async def list_reviews(
 async def get_review(
     review_id: str,
     review_service: HumanReviewService = Depends(get_review_service),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> HumanReviewRead:
+    _ = user
     try:
         return review_service.get(review_id)
     except ValueError as exc:
@@ -37,12 +41,14 @@ def _decision_request(
     user: AuthenticatedUser,
     body: ReviewDecisionRequest | None = None,
 ) -> HumanReviewRead:
+    if user.role not in {"admin", "analyst"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Review actions require admin or analyst permissions")
     comment = body.comment if body is not None else None
     try:
         return review_service.decide(
             review_id,
             decision=decision,
-            reviewed_by=user.username,
+            reviewed_by=(user.email or user.username),
             comment=comment,
         )
     except ValueError as exc:
@@ -53,7 +59,7 @@ def _decision_request(
 async def approve_review(
     review_id: str,
     body: ReviewDecisionRequest | None = None,
-    user: AuthenticatedUser = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(require_review_action),
     review_service: HumanReviewService = Depends(get_review_service),
 ) -> HumanReviewRead:
     return _decision_request(review_service, review_id, ReviewStatus.APPROVED, user, body)
@@ -63,7 +69,7 @@ async def approve_review(
 async def reject_review(
     review_id: str,
     body: ReviewDecisionRequest | None = None,
-    user: AuthenticatedUser = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(require_review_action),
     review_service: HumanReviewService = Depends(get_review_service),
 ) -> HumanReviewRead:
     return _decision_request(review_service, review_id, ReviewStatus.REJECTED, user, body)
@@ -73,7 +79,7 @@ async def reject_review(
 async def escalate_review(
     review_id: str,
     body: ReviewDecisionRequest | None = None,
-    user: AuthenticatedUser = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(require_review_action),
     review_service: HumanReviewService = Depends(get_review_service),
 ) -> HumanReviewRead:
     return _decision_request(review_service, review_id, ReviewStatus.ESCALATED, user, body)

@@ -142,3 +142,4 @@ autonomous-threat-defense/data/raw/
 # =========================================================
 **/__pycache__/
 **/*.py[cod]
+soc.db

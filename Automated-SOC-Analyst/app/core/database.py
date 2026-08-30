@@ -17,6 +17,7 @@ from app.models.schemas import (  # noqa: F401
     HumanReview,
     RemediationAction,
     TelemetryEvent,
+    User,
 )
 
 

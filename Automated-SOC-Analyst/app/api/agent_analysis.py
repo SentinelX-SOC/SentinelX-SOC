@@ -5,11 +5,14 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.agents.shadow_service import ShadowMultiAgentService
+from app.core.config import settings
 from app.core.deps import get_shadow_multi_agent_service
-from app.models.schemas import AgentAnalysisRead, TelemetryEventCreate
+from app.models.schemas import AgentAnalysisRead, CostEstimate, TelemetryEventCreate
+from app.services.cost_estimation import CostEstimateService
 
 router = APIRouter(prefix="/agent-analysis", tags=["agent-analysis"])
 logger = logging.getLogger(__name__)
+cost_service = CostEstimateService()
 
 
 @router.post("", response_model=AgentAnalysisRead)
@@ -28,6 +31,7 @@ async def analyze_event(
             detail="Agent analysis failed",
         ) from exc
 
+    incident_count = 1 if context.alert is not None else 0
     return AgentAnalysisRead(
         event=context.event,
         detection_source=context.detection_source,
@@ -40,4 +44,11 @@ async def analyze_event(
         remediation_dry_run=True,
         agents=[agent.name for agent in shadow.agents],
         errors=context.errors,
+        estimated_cost=CostEstimate.from_run(
+            event_count=1,
+            incident_count=incident_count,
+            enabled=settings.cost_estimation_enabled,
+            cost_per_event_usd=settings.cost_per_event_usd,
+            cost_per_incident_usd=settings.cost_per_incident_usd,
+        ),
     )

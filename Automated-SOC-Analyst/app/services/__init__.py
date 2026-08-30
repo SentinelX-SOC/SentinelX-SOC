@@ -1,3 +1,4 @@
+from app.services.cost_estimation import CostEstimateService
 from app.services.detection import AnomalyDetector
 from app.services.event_pipeline import EventPipeline
 from app.services.graph_service import GraphService
@@ -11,6 +12,7 @@ from app.services.websocket import ConnectionManager, manager
 __all__ = [
     "AnomalyDetector",
     "ConnectionManager",
+    "CostEstimateService",
     "EventPipeline",
     "GraphService",
     "HoneytokenService",

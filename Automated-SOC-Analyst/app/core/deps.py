@@ -105,3 +105,7 @@ def get_multi_agent_service() -> MultiAgentService:
 
 def get_shadow_multi_agent_service() -> ShadowMultiAgentService:
     return shadow_multi_agent_service
+
+
+def get_repository() -> SocRepository:
+    return repository

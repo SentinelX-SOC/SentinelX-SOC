@@ -34,10 +34,16 @@ class Settings(BaseSettings):
     ml_request_timeout_seconds: float = Field(default=2.0, gt=0)
     events_batch_chunk_size: int = Field(default=100, ge=1)
     events_batch_use_multi_agent: bool = True
+    cost_estimation_enabled: bool = False
+    cost_per_event_usd: float = Field(default=0.0, ge=0.0)
+    cost_per_incident_usd: float = Field(default=0.0, ge=0.0)
 
-    # --- Temporary in-memory authentication (replace with a repository later) ---
-    auth_dev_username: str = "analyst@example.com"
+    # --- Persistent local auth bootstrap ---
+    auth_dev_username: str = "admin@example.com"
     auth_dev_password: str = Field(default="change-this-development-password", min_length=8)
+    auth_bootstrap_enabled: bool = True
+    auth_bootstrap_email: str | None = "admin@example.com"
+    auth_bootstrap_password: str | None = None
     auth_session_ttl_seconds: int = Field(default=3600, ge=60)
     auth_cookie_secure: bool = False
 

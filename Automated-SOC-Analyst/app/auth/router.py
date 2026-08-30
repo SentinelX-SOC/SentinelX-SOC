@@ -1,4 +1,4 @@
-"""Temporary authentication routes. No database or persistent identity yet."""
+"""Persistent authentication routes."""
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
@@ -12,7 +12,10 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/login", response_model=LoginResponse)
 async def login(body: LoginRequest, response: Response) -> LoginResponse:
-    user = auth_service.authenticate(body.username, body.password)
+    identity = body.email or body.username
+    if identity is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    user = auth_service.authenticate(identity, body.password)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     response.set_cookie(

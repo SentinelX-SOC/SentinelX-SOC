@@ -84,6 +84,26 @@ def test_ml_result_returned_when_ml_available(
     assert body["risk_score"] == pytest.approx(95.0)
 
 
+def test_agent_analysis_returns_estimated_cost_summary(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def prediction(event: TelemetryEventRead) -> MLPredictionResponse:
+        return _ml(event)
+
+    monkeypatch.setattr(ml_service, "predict", prediction)
+    monkeypatch.setattr("app.api.agent_analysis.settings.cost_estimation_enabled", True)
+    monkeypatch.setattr("app.api.agent_analysis.settings.cost_per_event_usd", 0.10)
+    monkeypatch.setattr("app.api.agent_analysis.settings.cost_per_incident_usd", 2.0)
+
+    body = client.post("/api/v1/agent-analysis", json=_payload()).json()
+
+    assert body["estimated_cost"]["estimate_label"] == "ESTIMATED"
+    assert body["estimated_cost"]["event_count"] == 1
+    assert body["estimated_cost"]["cost_per_event"] == pytest.approx(0.10)
+    assert body["estimated_cost"]["cost_per_incident"] is None
+    assert body["estimated_cost"]["total_cost"] == pytest.approx(0.10)
+
+
 def test_heuristic_fallback_when_ml_unavailable(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -15,6 +15,8 @@ from app.models.schemas import (
     ReviewStatus,
     TelemetryEvent,
     TelemetryEventRead,
+    User,
+    UserRole,
 )
 
 
@@ -78,6 +80,45 @@ class SocRepository:
             if alert_id is not None:
                 statement = statement.where(RemediationAction.alert_id == alert_id)
             return list(session.exec(statement).all())
+
+    def create_user(self, user: User) -> User:
+        with self.session_factory() as session:
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            return user
+
+    def get_user_by_email(self, email: str) -> User | None:
+        with self.session_factory() as session:
+            return session.exec(select(User).where(User.email == email.lower())).first()
+
+    def get_user_by_id(self, user_id: UUID) -> User | None:
+        with self.session_factory() as session:
+            return session.get(User, user_id)
+
+    def list_users(self, *, limit: int = 100) -> list[User]:
+        with self.session_factory() as session:
+            return list(session.exec(select(User).order_by(User.created_at.desc()).limit(limit)).all())
+
+    def update_user_role(self, user_id: UUID, role: UserRole) -> User:
+        with self.session_factory() as session:
+            stored = session.get(User, user_id)
+            if stored is None:
+                raise ValueError(f"User not found: {user_id}")
+            stored.role = role
+            session.commit()
+            session.refresh(stored)
+            return stored
+
+    def update_user_status(self, user_id: UUID, *, is_active: bool) -> User:
+        with self.session_factory() as session:
+            stored = session.get(User, user_id)
+            if stored is None:
+                raise ValueError(f"User not found: {user_id}")
+            stored.is_active = is_active
+            session.commit()
+            session.refresh(stored)
+            return stored
 
     def create_honeytoken(self, honeytoken: Honeytoken) -> Honeytoken:
         with self.session_factory() as session:
