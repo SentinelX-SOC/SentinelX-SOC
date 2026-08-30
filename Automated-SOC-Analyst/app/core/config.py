@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # --- External ML inference service (backend is the client) ---
-    ml_service_url: str = "http://localhost:9000"
+    ml_service_url: str = "http://127.0.0.1:9000"
     ml_request_timeout_seconds: float = Field(default=2.0, gt=0)
 
     # --- Temporary in-memory authentication (replace with a repository later) ---

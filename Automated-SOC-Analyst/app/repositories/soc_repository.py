@@ -43,6 +43,15 @@ class SocRepository:
             statement = select(TelemetryEvent).order_by(TelemetryEvent.timestamp.desc()).offset(offset).limit(limit)
             return list(session.exec(statement).all())
 
+    def list_telemetry_events_chronological(self) -> list[TelemetryEvent]:
+        """Return every persisted telemetry row in replay order for graph hydration."""
+        with self.session_factory() as session:
+            statement = select(TelemetryEvent).order_by(
+                TelemetryEvent.timestamp.asc(),
+                TelemetryEvent.id.asc(),
+            )
+            return list(session.exec(statement).all())
+
     def create_alert(self, alert: Alert) -> Alert:
         with self.session_factory() as session:
             session.add(alert)

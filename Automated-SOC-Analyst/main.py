@@ -14,13 +14,14 @@ from app.api.honeytokens import router as honeytoken_router
 from app.api.simulation import router as simulation_router
 from app.api.websockets import router as websocket_router
 from app.core.config import settings
-from app.core.deps import graph_service, honeytoken_service, manager, ml_service, simulation_engine
+from app.core.deps import graph_service, honeytoken_service, manager, ml_service, repository, simulation_engine
 from app.models.schemas import HealthRead
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     honeytoken_service.hydrate_from_database()
+    graph_service.hydrate_from_database(repository)
     yield
 
 

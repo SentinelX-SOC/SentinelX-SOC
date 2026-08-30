@@ -15,6 +15,7 @@ def client() -> Iterator[TestClient]:
     manager.active_connections.clear()
     with TestClient(app) as test_client:
         honeytoken_service.clear()
+        graph_service.graph.clear()
         yield test_client
     honeytoken_service.clear()
     remediation_service.clear()
