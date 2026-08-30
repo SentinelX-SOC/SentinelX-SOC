@@ -97,6 +97,13 @@ class RemediationStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class ReviewStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    ESCALATED = "escalated"
+
+
 class HoneytokenType(str, Enum):
     CREDENTIAL = "credential"
     FILE = "file"
@@ -219,6 +226,24 @@ class RemediationAction(SQLModel, table=True):
     completed_at: datetime | None = SQLField(default=None)
 
     alert: Alert | None = Relationship(back_populates="remediations")
+
+
+class HumanReview(SQLModel, table=True):
+    """Persistent decision record for analyst review of high-risk automated actions."""
+
+    __tablename__ = "human_reviews"
+
+    id: UUID = SQLField(default_factory=uuid4, primary_key=True)
+    event_id: UUID = SQLField(index=True)
+    alert_id: UUID | None = SQLField(default=None, foreign_key="alerts.id", index=True)
+    action_type: RemediationActionType = SQLField(index=True)
+    risk_score: float = SQLField(ge=0.0, le=100.0, index=True)
+    reason: str = SQLField(max_length=2048)
+    status: ReviewStatus = SQLField(default=ReviewStatus.PENDING, index=True)
+    reviewed_by: str | None = SQLField(default=None, max_length=255, index=True)
+    reviewed_at: datetime | None = SQLField(default=None, index=True)
+    review_comment: str | None = SQLField(default=None, max_length=2048)
+    created_at: datetime = SQLField(default_factory=utc_now, index=True)
 
 
 class Honeytoken(SQLModel, table=True):
@@ -491,6 +516,28 @@ class RemediationActionRead(BaseModel):
     result: str | None
     created_at: datetime
     completed_at: datetime | None
+
+
+class HumanReviewRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    event_id: UUID
+    alert_id: UUID | None = None
+    action_type: RemediationActionType | None = None
+    risk_score: float = Field(ge=0.0, le=100.0)
+    reason: str
+    status: ReviewStatus = ReviewStatus.PENDING
+    created_at: datetime = Field(default_factory=utc_now)
+    reviewed_by: str | None = None
+    review_comment: str | None = None
+    reviewed_at: datetime | None = None
+
+
+class ReviewDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    comment: str | None = Field(default=None, max_length=2048)
 
 
 # ---------------------------------------------------------------------------

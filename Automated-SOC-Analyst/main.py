@@ -12,6 +12,7 @@ from app.api.dev import router as dev_router
 from app.api.events import router as events_router
 from app.api.graph import router as graph_router
 from app.api.honeytokens import router as honeytoken_router
+from app.api.reviews import router as review_router
 from app.api.simulation import router as simulation_router
 from app.api.websockets import router as websocket_router
 from app.core.config import settings
@@ -42,6 +43,7 @@ app.include_router(honeytoken_router, prefix=settings.api_v1_prefix)
 app.include_router(dev_router, prefix=settings.api_v1_prefix)  # DEVELOPMENT / TEST ONLY
 app.include_router(events_router, prefix=settings.api_v1_prefix)
 app.include_router(agent_analysis_router, prefix=settings.api_v1_prefix)
+app.include_router(review_router, prefix=settings.api_v1_prefix)
 app.include_router(auth_router, prefix=settings.api_v1_prefix)
 app.include_router(websocket_router)
 

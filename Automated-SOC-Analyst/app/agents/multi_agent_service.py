@@ -27,6 +27,7 @@ from app.services.detection import AnomalyDetector
 from app.services.graph_service import GraphService
 from app.services.policy_service import PolicyService
 from app.services.remediation_service import RemediationService
+from app.services.review_service import HumanReviewService
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class MultiAgentService:
         remediation_service: RemediationService,
         *,
         allow_remediation: bool = False,
+        review_service: HumanReviewService | None = None,
     ) -> None:
         self._allow_remediation = allow_remediation
         remediator: RemediationService | _DisabledRemediationService
@@ -70,8 +72,8 @@ class MultiAgentService:
             agents=[
                 DetectionAgent(detector),
                 ThreatAnalysisAgent(graph_service),
-                DecisionAgent(policy_engine=policy_service),
-                RemediationAgent(remediation_service=remediator),  # type: ignore[arg-type]
+                DecisionAgent(policy_engine=policy_service, review_service=review_service),
+                RemediationAgent(remediation_service=remediator, review_service=review_service),  # type: ignore[arg-type]
             ]
         )
 

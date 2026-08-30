@@ -10,7 +10,9 @@ from app.core import database
 from app.models.schemas import (
     Alert,
     Honeytoken,
+    HumanReview,
     RemediationAction,
+    ReviewStatus,
     TelemetryEvent,
     TelemetryEventRead,
 )
@@ -91,6 +93,37 @@ class SocRepository:
     def list_honeytokens(self) -> list[Honeytoken]:
         with self.session_factory() as session:
             return list(session.exec(select(Honeytoken)).all())
+
+    def create_review(self, review: HumanReview) -> HumanReview:
+        with self.session_factory() as session:
+            session.add(review)
+            session.commit()
+            session.refresh(review)
+            return review
+
+    def get_review(self, review_id: UUID) -> HumanReview | None:
+        with self.session_factory() as session:
+            return session.get(HumanReview, review_id)
+
+    def list_reviews(self, *, status: ReviewStatus | None = None, limit: int = 100) -> list[HumanReview]:
+        with self.session_factory() as session:
+            statement = select(HumanReview).order_by(HumanReview.created_at.desc()).limit(limit)
+            if status is not None:
+                statement = statement.where(HumanReview.status == status)
+            return list(session.exec(statement).all())
+
+    def update_review(self, review: HumanReview) -> HumanReview:
+        with self.session_factory() as session:
+            stored = session.get(HumanReview, review.id)
+            if stored is None:
+                raise ValueError(f"Review not found: {review.id}")
+            stored.status = review.status
+            stored.reviewed_by = review.reviewed_by
+            stored.reviewed_at = review.reviewed_at
+            stored.review_comment = review.review_comment
+            session.commit()
+            session.refresh(stored)
+            return stored
 
     def update_honeytoken(self, honeytoken: Honeytoken) -> Honeytoken:
         with self.session_factory() as session:

@@ -17,6 +17,7 @@ from app.models.schemas import (
     MLPredictionResponse,
     PolicyDecisionRead,
     RemediationActionRead,
+    ReviewStatus,
     TelemetryEventRead,
 )
 
@@ -39,5 +40,9 @@ class AgentContext(BaseModel):
     policy: PolicyDecisionRead | None = None
     remediation: RemediationActionRead | None = None
     device: DeviceStateRead | None = None
+    review_required: bool = False
+    review_status: ReviewStatus | None = None
+    review_request_id: str | None = None
+    review_comment: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     errors: list[str] = Field(default_factory=list)

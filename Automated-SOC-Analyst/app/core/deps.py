@@ -10,6 +10,7 @@ from app.services.honeytoken_service import HoneytokenService
 from app.services.ml_service import MLService
 from app.services.policy_service import PolicyService
 from app.services.remediation_service import RemediationService
+from app.services.review_service import HumanReviewService
 from app.services.websocket import ConnectionManager, manager
 from app.simulation.engine import SimulationEngine
 
@@ -19,6 +20,7 @@ detector = AnomalyDetector(ml_service=ml_service)
 policy_service = PolicyService()
 remediation_service = RemediationService()
 repository = SocRepository()
+review_service = HumanReviewService(repository=repository)
 event_pipeline = EventPipeline(
     graph_service=graph_service,
     detector=detector,
@@ -47,6 +49,7 @@ multi_agent_service = MultiAgentService(
     policy_service=policy_service,
     remediation_service=remediation_service,
     allow_remediation=False,
+    review_service=review_service,
 )
 shadow_multi_agent_service = ShadowMultiAgentService(
     detector=detector,
@@ -78,6 +81,10 @@ def get_policy_service() -> PolicyService:
 
 def get_remediation_service() -> RemediationService:
     return remediation_service
+
+
+def get_review_service() -> HumanReviewService:
+    return review_service
 
 
 def get_honeytoken_service() -> HoneytokenService:
