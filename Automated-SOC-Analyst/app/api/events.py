@@ -8,10 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import ValidationError
 
 from app.core.config import settings
-from app.core.deps import get_event_pipeline
+from app.core.deps import get_event_pipeline, get_multi_agent_service
 from app.models.schemas import (
     BatchEventError,
     EventPipelineResult,
+    PolicyDecisionRead,
     TelemetryEventBatchCreate,
     TelemetryEventBatchResult,
     TelemetryEventCreate,
@@ -47,7 +48,7 @@ async def ingest_event_batch(
     body: TelemetryEventBatchCreate,
     pipeline: EventPipeline = Depends(get_event_pipeline),
 ) -> TelemetryEventBatchResult:
-    """Process a list of telemetry events through the existing EventPipeline."""
+    """Prefer the multi-agent path per event, but preserve EventPipeline as the fallback."""
     started = perf_counter()
     raw_events = body.events
     total = len(raw_events)
@@ -66,13 +67,13 @@ async def ingest_event_batch(
                 event = TelemetryEventRead.model_validate(
                     {"id": uuid4(), **created.model_dump()}
                 )
-                result = await pipeline.process(event, device_id=event.source)
+                result = await _process_batch_event(event, pipeline)
             except Exception as exc:
                 failed += 1
                 if len(errors) < _MAX_REPORTED_ERRORS:
                     errors.append(BatchEventError(index=index, error=_batch_error_message(exc)))
                 if not isinstance(exc, ValidationError):
-                    logger.exception("Batch event at index %s failed during pipeline processing", index)
+                    logger.exception("Batch event at index %s failed during processing", index)
                 continue
 
             processed += 1
@@ -90,6 +91,56 @@ async def ingest_event_batch(
         remediations=remediations,
         processing_time_ms=elapsed_ms,
         errors=errors,
+    )
+
+
+async def _process_batch_event(
+    event: TelemetryEventRead,
+    pipeline: EventPipeline,
+) -> EventPipelineResult:
+    """Try the multi-agent orchestrator first, then fall back to the existing EventPipeline."""
+    if settings.events_batch_use_multi_agent:
+        try:
+            return await _run_multi_agent_event(event)
+        except Exception:
+            logger.warning(
+                "Batch multi-agent processing failed for event %s; falling back to EventPipeline",
+                event.id,
+                exc_info=True,
+            )
+
+    return await pipeline.process(event, device_id=event.source)
+
+
+async def _run_multi_agent_event(event: TelemetryEventRead) -> EventPipelineResult:
+    """Convert a MultiAgentService result into the existing EventPipelineResult contract."""
+    service = get_multi_agent_service()
+    context = await service.run(event)
+    if context is None:
+        raise RuntimeError("multi-agent batch processing returned no context")
+
+    if context.errors:
+        logger.warning(
+            "Batch multi-agent processing completed with warnings for event %s: %s",
+            event.id,
+            context.errors,
+        )
+
+    return EventPipelineResult(
+        event=event,
+        detection_source=context.detection_source or "heuristic",
+        risk_score=context.risk_score if context.risk_score is not None else 0.0,
+        ml=getattr(context, "ml", None),
+        alert=getattr(context, "alert", None),
+        investigation=getattr(context, "investigation", None),
+        policy=getattr(context, "policy", None)
+        or PolicyDecisionRead(
+            allowed=False,
+            action=None,
+            reason="Multi-agent batch path did not produce a policy decision",
+        ),
+        remediation=getattr(context, "remediation", None),
+        device=getattr(context, "device", None),
     )
 
 

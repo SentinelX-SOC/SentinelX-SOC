@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     ml_service_url: str = "http://127.0.0.1:9000"
     ml_request_timeout_seconds: float = Field(default=2.0, gt=0)
     events_batch_chunk_size: int = Field(default=100, ge=1)
+    events_batch_use_multi_agent: bool = True
 
     # --- Temporary in-memory authentication (replace with a repository later) ---
     auth_dev_username: str = "analyst@example.com"

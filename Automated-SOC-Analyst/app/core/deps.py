@@ -1,5 +1,6 @@
 """Process-wide service instances shared by API routers."""
 
+from app.agents.multi_agent_service import MultiAgentService
 from app.agents.shadow_service import ShadowMultiAgentService
 from app.repositories.soc_repository import SocRepository
 from app.services.detection import AnomalyDetector
@@ -39,6 +40,13 @@ honeytoken_service = HoneytokenService(
     remediation_service=remediation_service,
     manager=manager,
     repository=repository,
+)
+multi_agent_service = MultiAgentService(
+    detector=detector,
+    graph_service=graph_service,
+    policy_service=policy_service,
+    remediation_service=remediation_service,
+    allow_remediation=False,
 )
 shadow_multi_agent_service = ShadowMultiAgentService(
     detector=detector,
@@ -82,6 +90,10 @@ def get_ml_service() -> MLService:
 
 def get_event_pipeline() -> EventPipeline:
     return event_pipeline
+
+
+def get_multi_agent_service() -> MultiAgentService:
+    return multi_agent_service
 
 
 def get_shadow_multi_agent_service() -> ShadowMultiAgentService:

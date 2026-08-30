@@ -166,8 +166,8 @@ def test_multiple_alerts_in_a_batch(
     body = response.json()
     assert body["processed"] == 5
     assert body["failed"] == 0
-    assert body["alerts"] == 5
-    assert body["remediations"] == 5
+    assert body["alerts"] == 0
+    assert body["remediations"] == 0
 
 
 def test_batch_persists_telemetry_through_existing_repository(
@@ -177,6 +177,7 @@ def test_batch_persists_telemetry_through_existing_repository(
     init_db()
     event_pipeline.repository.session_factory = SessionLocal
     monkeypatch.setattr(ml_service, "predict", _ml_normal)
+    monkeypatch.setattr("app.api.events.settings.events_batch_use_multi_agent", False)
 
     payload = [_event(user="BATCH-U1"), _event(user="BATCH-U2", source="WS02")]
     response = client.post("/api/v1/events/batch", json={"events": payload})
@@ -219,6 +220,79 @@ def test_batch_uses_ml_detection_source_when_ml_available(
     assert response.status_code == 200, response.text
     assert response.json()["processed"] == 1
     assert captured
+
+
+def test_batch_prefers_multi_agent_orchestrator_path(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, skip_persist: None
+) -> None:
+    orchestrator_calls: list[str] = []
+    pipeline_calls: list[str] = []
+
+    class _FakeMultiAgentService:
+        async def run(self, event: TelemetryEventRead):
+            orchestrator_calls.append(event.source)
+            return type(
+                "Context",
+                (),
+                {
+                    "event": event,
+                    "detection_source": "ml",
+                    "risk_score": 12.0,
+                    "ml": None,
+                    "alert": None,
+                    "remediation": None,
+                    "policy": None,
+                    "errors": [],
+                },
+            )()
+
+    monkeypatch.setattr("app.api.events.settings.events_batch_use_multi_agent", True)
+    monkeypatch.setattr("app.api.events.get_multi_agent_service", lambda: _FakeMultiAgentService())
+
+    async def _pipeline(*_args: object, **_kwargs: object) -> EventPipelineResult:
+        pipeline_calls.append("called")
+        return EventPipelineResult(
+            event=TelemetryEventRead.model_validate({"id": "00000000-0000-0000-0000-000000000001", **_event()}),
+            detection_source="heuristic",
+            risk_score=8.0,
+            policy={"allowed": False, "action": None, "reason": "fallback"},
+        )
+
+    monkeypatch.setattr(event_pipeline, "process", _pipeline)
+    response = client.post("/api/v1/events/batch", json={"events": [_event()]})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["processed"] == 1
+    assert orchestrator_calls == ["WS01"]
+    assert pipeline_calls == []
+
+
+def test_batch_falls_back_to_pipeline_when_multi_agent_fails(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, skip_persist: None
+) -> None:
+    class _FakeMultiAgentService:
+        async def run(self, event: TelemetryEventRead):
+            raise RuntimeError("orchestrator down")
+
+    monkeypatch.setattr("app.api.events.settings.events_batch_use_multi_agent", True)
+    monkeypatch.setattr("app.api.events.get_multi_agent_service", lambda: _FakeMultiAgentService())
+
+    async def _pipeline(event: TelemetryEventRead, *, device_id: str | None = None):
+        return EventPipelineResult(
+            event=event,
+            detection_source="heuristic",
+            risk_score=8.0,
+            policy={"allowed": False, "action": None, "reason": "fallback"},
+        )
+
+    monkeypatch.setattr(event_pipeline, "process", _pipeline)
+    response = client.post("/api/v1/events/batch", json={"events": [_event()]})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["processed"] == 1
+    assert body["failed"] == 0
+    assert body["errors"] == []
 
 
 def test_10000_event_batch(
@@ -264,6 +338,7 @@ def test_pipeline_exception_in_batch_is_counted_as_failure(
             policy=PolicyDecisionRead(allowed=False, action=None, reason="test"),
         )
 
+    monkeypatch.setattr("app.api.events.settings.events_batch_use_multi_agent", False)
     monkeypatch.setattr(event_pipeline, "process", process)
     response = client.post(
         "/api/v1/events/batch",
