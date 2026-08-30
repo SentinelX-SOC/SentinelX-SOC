@@ -7,7 +7,8 @@ from uuid import uuid4
 import pytest
 from sqlmodel import Session, select
 
-from app.core.database import SessionLocal, init_db, reset_database
+from app.core import database
+from app.core.database import init_db, reset_database
 from app.models.schemas import (
     Alert,
     AlertStatus,
@@ -39,7 +40,10 @@ from app.services.websocket import ConnectionManager, manager
 def repo() -> SocRepository:
     reset_database("sqlite://")
     init_db()
-    return SocRepository()
+    isolated = SocRepository(session_factory=database.SessionLocal)
+    yield isolated
+    reset_database("sqlite://")
+    init_db()
 
 
 @pytest.fixture()
@@ -78,7 +82,7 @@ def _pipeline_row_counts(repo: SocRepository) -> tuple[int, int, int]:
 def test_database_engine_and_session_creation() -> None:
     reset_database("sqlite://")
     init_db()
-    with SessionLocal() as session:
+    with database.SessionLocal() as session:
         assert isinstance(session, Session)
 
 

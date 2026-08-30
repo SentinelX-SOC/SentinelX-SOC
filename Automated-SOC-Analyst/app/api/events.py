@@ -64,26 +64,27 @@ async def ingest_event_batch(
 
     for start in range(0, total, chunk_size):
         end = min(start + chunk_size, total)
-        for index in range(start, end):
-            try:
-                created = TelemetryEventCreate.model_validate(raw_events[index])
-                event = TelemetryEventRead.model_validate(
-                    {"id": uuid4(), **created.model_dump()}
-                )
-                result = await _process_batch_event(event, pipeline)
-            except Exception as exc:
-                failed += 1
-                if len(errors) < _MAX_REPORTED_ERRORS:
-                    errors.append(BatchEventError(index=index, error=_batch_error_message(exc)))
-                if not isinstance(exc, ValidationError):
-                    logger.exception("Batch event at index %s failed during processing", index)
-                continue
+        with pipeline.deferred_persist():
+            for index in range(start, end):
+                try:
+                    created = TelemetryEventCreate.model_validate(raw_events[index])
+                    event = TelemetryEventRead.model_validate(
+                        {"id": uuid4(), **created.model_dump()}
+                    )
+                    result = await _process_batch_event(event, pipeline)
+                except Exception as exc:
+                    failed += 1
+                    if len(errors) < _MAX_REPORTED_ERRORS:
+                        errors.append(BatchEventError(index=index, error=_batch_error_message(exc)))
+                    if not isinstance(exc, ValidationError):
+                        logger.exception("Batch event at index %s failed during processing", index)
+                    continue
 
-            processed += 1
-            if result.alert is not None:
-                alerts += 1
-            if result.remediation is not None:
-                remediations += 1
+                processed += 1
+                if result.alert is not None:
+                    alerts += 1
+                if result.remediation is not None:
+                    remediations += 1
 
     elapsed_ms = int((perf_counter() - started) * 1000)
     return TelemetryEventBatchResult(

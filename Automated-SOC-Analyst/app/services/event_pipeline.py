@@ -4,7 +4,11 @@ Honeytoken triggers must keep using ``HoneytokenService`` (high-confidence
 local path). This pipeline is for ordinary telemetry only.
 """
 
+from __future__ import annotations
+
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 from app.models.schemas import (
     Alert,
@@ -16,7 +20,7 @@ from app.models.schemas import (
     RemediationActionType,
     TelemetryEventRead,
 )
-from app.repositories.soc_repository import SocRepository
+from app.repositories.soc_repository import PipelinePersistItem, SocRepository
 from app.services.detection import AnomalyDetector
 from app.services.graph_service import GraphService
 from app.services.investigation_service import InvestigationService
@@ -48,6 +52,7 @@ class EventPipeline:
         self.manager = manager
         self.investigation_service = investigation_service or InvestigationService()
         self.repository = repository or SocRepository()
+        self._deferred_persist: list[PipelinePersistItem] | None = None
 
     async def process(
         self,
@@ -135,6 +140,42 @@ class EventPipeline:
             device=device,
         )
 
+    @contextmanager
+    def deferred_persist(self) -> Iterator[None]:
+        """Buffer pipeline writes and commit them together when the block exits.
+
+        Single-event ``process()`` still commits immediately when this context
+        is not active. Nested use reuses the outer buffer.
+        """
+        nested = self._deferred_persist is not None
+        if not nested:
+            self._deferred_persist = []
+        try:
+            yield
+        finally:
+            if not nested:
+                pending = self._deferred_persist
+                self._deferred_persist = None
+                self._flush_persist_records(pending or [])
+
+    def _flush_persist_records(self, records: list[PipelinePersistItem]) -> None:
+        if not records:
+            return
+        try:
+            self.repository.persist_pipeline_results(records)
+            return
+        except Exception:
+            logger.exception("Batch persist failed; retrying per event so successful rows are not lost")
+        for item in records:
+            try:
+                self.repository.persist_pipeline_result(
+                    event=item.event,
+                    alert=item.alert,
+                    remediation=item.remediation,
+                )
+            except Exception:
+                logger.exception("Failed to persist pipeline result; continuing without durable state")
+
     def _persist_safely(
         self,
         *,
@@ -142,6 +183,10 @@ class EventPipeline:
         alert: Alert | None,
         remediation: RemediationAction | None,
     ) -> None:
+        item = PipelinePersistItem(event=event, alert=alert, remediation=remediation)
+        if self._deferred_persist is not None:
+            self._deferred_persist.append(item)
+            return
         try:
             self.repository.persist_pipeline_result(
                 event=event,
@@ -176,12 +221,7 @@ class EventPipeline:
                     "payload": alert,
                 }
             )
-        await self.manager.broadcast_json(
-            {
-                "type": "graph",
-                "payload": self.graph_service.get_react_flow_graph(),
-            }
-        )
+        await self.manager.schedule_graph_broadcast(self.graph_service.get_react_flow_graph)
         if remediation is not None:
             await self.manager.broadcast_json(
                 {

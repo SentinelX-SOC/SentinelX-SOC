@@ -136,12 +136,7 @@ class SimulationEngine:
                 }
             )
 
-        await self.manager.broadcast_json(
-            {
-                "type": "graph",
-                "payload": self.graph_service.get_react_flow_graph(),
-            }
-        )
+        await self.manager.schedule_graph_broadcast(self.graph_service.get_react_flow_graph)
 
     async def _interruptible_sleep(self, delay: float) -> None:
         try:

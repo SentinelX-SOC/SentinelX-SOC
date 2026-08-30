@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 
 from app.core.deps import detector, event_pipeline, graph_service, ml_service, repository
 from app.models.schemas import EventStatus, EventType, MLPredictionResponse, TelemetryEventRead
-from app.repositories.soc_repository import SocRepository
 from app.services.detection import DetectionScore
 
 
@@ -208,7 +207,7 @@ def test_controlled_live_agent_analysis_has_no_side_effects(
     """One request through the real app stack. ML is used when the detector can reach it."""
     nodes_before = graph_service.graph.number_of_nodes()
     edges_before = graph_service.graph.number_of_edges()
-    rows_before = len(SocRepository().list_telemetry_events_chronological())
+    rows_before = len(repository.list_telemetry_events_chronological())
     broadcast_before = len(broadcasts)
 
     response = client.post(
@@ -239,5 +238,5 @@ def test_controlled_live_agent_analysis_has_no_side_effects(
     assert body["remediation_dry_run"] is True
     assert graph_service.graph.number_of_nodes() == nodes_before
     assert graph_service.graph.number_of_edges() == edges_before
-    assert len(SocRepository().list_telemetry_events_chronological()) == rows_before
+    assert len(repository.list_telemetry_events_chronological()) == rows_before
     assert len(broadcasts) == broadcast_before

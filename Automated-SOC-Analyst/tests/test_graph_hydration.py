@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.core import database
 from app.core.database import init_db, reset_database
 from app.models.schemas import EventStatus, EventType, TelemetryEvent, TelemetryEventRead
 from app.repositories.soc_repository import SocRepository
@@ -16,7 +17,9 @@ from app.services.websocket import manager
 def repo() -> SocRepository:
     reset_database("sqlite://")
     init_db()
-    return SocRepository()
+    yield SocRepository(session_factory=database.SessionLocal)
+    reset_database("sqlite://")
+    init_db()
 
 
 def _event(

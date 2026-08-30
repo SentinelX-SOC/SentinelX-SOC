@@ -2,6 +2,7 @@
 
 from fastapi.testclient import TestClient
 
+from app.core.deps import manager
 from app.models.schemas import DeviceStatus, EventType, RemediationActionType
 
 PREFIX = "/api/v1/honeytokens"
@@ -131,8 +132,12 @@ def test_websocket_notifications(client: TestClient, broadcasts: list[object]) -
     assert "telemetry" in types
     assert "alert" in types
     assert "honeytoken_triggered" in types
-    assert "graph" in types
     assert "remediation_executed" in types
+    assert "graph" not in types
+    assert manager.graph_broadcasts_skipped >= 1
+    graph = client.get("/api/v1/graph/").json()
+    assert graph["nodes"]
+    assert graph["edges"]
 
 
 def test_url_trap_uses_same_trigger_path(client: TestClient) -> None:

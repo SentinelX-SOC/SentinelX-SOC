@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from uuid import UUID
 
 from sqlmodel import Session, select
@@ -20,11 +21,21 @@ from app.models.schemas import (
 )
 
 
+@dataclass(frozen=True)
+class PipelinePersistItem:
+    """One EventPipeline durable write: telemetry plus optional alert/remediation."""
+
+    event: TelemetryEvent | TelemetryEventRead
+    alert: Alert | None = None
+    remediation: RemediationAction | None = None
+
+
 class SocRepository:
     """Encapsulates SQLModel CRUD for the backend's existing durable records."""
 
     def __init__(self, session_factory: type[Session] | None = None) -> None:
         self._session_factory = session_factory or database.SessionLocal
+        self.pipeline_commit_count = 0
 
     @property
     def session_factory(self) -> type[Session]:
@@ -194,18 +205,39 @@ class SocRepository:
         here. The ``honeytoken`` argument is retained for signature compatibility.
         """
         _ = honeytoken
-        event_model = (
-            event if isinstance(event, TelemetryEvent) else TelemetryEvent.model_validate(event.model_dump())
+        self.persist_pipeline_results(
+            [PipelinePersistItem(event=event, alert=alert, remediation=remediation)]
         )
+
+    def persist_pipeline_results(self, items: list[PipelinePersistItem]) -> None:
+        """Persist many pipeline results in one transaction (one commit)."""
+        if not items:
+            return
         with self.session_factory() as session:
             try:
-                session.add(event_model)
-                if alert is not None:
-                    session.add(alert)
-                    session.flush()
-                if remediation is not None:
-                    session.add(remediation)
+                for item in items:
+                    session.add(_as_telemetry_event(item.event))
+                    if item.alert is not None:
+                        session.add(_copy_alert(item.alert))
+                        session.flush()
+                    if item.remediation is not None:
+                        session.add(_copy_remediation(item.remediation))
                 session.commit()
+                self.pipeline_commit_count += 1
             except Exception:
                 session.rollback()
                 raise
+
+
+def _as_telemetry_event(event: TelemetryEvent | TelemetryEventRead) -> TelemetryEvent:
+    return TelemetryEvent.model_validate(event.model_dump())
+
+
+def _copy_alert(alert: Alert) -> Alert:
+    payload = alert.model_dump(exclude={"remediations"})
+    return Alert.model_validate(payload)
+
+
+def _copy_remediation(remediation: RemediationAction) -> RemediationAction:
+    payload = remediation.model_dump(exclude={"alert"})
+    return RemediationAction.model_validate(payload)

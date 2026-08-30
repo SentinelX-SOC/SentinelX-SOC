@@ -4,7 +4,6 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import select
 
-from app.core.database import SessionLocal, init_db, reset_database
 from app.core.deps import event_pipeline, ml_service
 from app.models.schemas import (
     EventPipelineResult,
@@ -61,6 +60,7 @@ async def _ml_anomalous(event: TelemetryEventRead) -> MLPredictionResponse:
 @pytest.fixture()
 def skip_persist(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(event_pipeline.repository, "persist_pipeline_result", lambda **_kwargs: None)
+    monkeypatch.setattr(event_pipeline.repository, "persist_pipeline_results", lambda _items: None)
 
     async def _noop_broadcast(_payload: object) -> None:
         return None
@@ -212,9 +212,6 @@ def test_multiple_alerts_in_a_batch(
 def test_batch_persists_telemetry_through_existing_repository(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    reset_database("sqlite://")
-    init_db()
-    event_pipeline.repository.session_factory = SessionLocal
     monkeypatch.setattr(ml_service, "predict", _ml_normal)
     monkeypatch.setattr("app.api.events.settings.events_batch_use_multi_agent", False)
 

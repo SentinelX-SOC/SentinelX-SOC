@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     ml_service_url: str = "http://127.0.0.1:9000"
     ml_request_timeout_seconds: float = Field(default=2.0, gt=0)
     events_batch_chunk_size: int = Field(default=100, ge=1)
+    graph_broadcast_coalesce_ms: int = Field(default=50, ge=0)
     events_batch_use_multi_agent: bool = True
     cost_estimation_enabled: bool = False
     cost_per_event_usd: float = Field(default=0.0, ge=0.0)

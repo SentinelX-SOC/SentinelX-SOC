@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from app.core.deps import event_pipeline, ml_service
+from app.core.deps import event_pipeline, manager, ml_service
 from app.models.schemas import (
     DeviceStatus,
     EventStatus,
@@ -402,8 +402,10 @@ def test_normal_suspicious_event_full_pipeline(
     types = [item["type"] for item in broadcasts if isinstance(item, dict)]
     assert "telemetry" in types
     assert "alert" in types
-    assert "graph" in types
     assert "remediation_executed" in types
+    # Zero WebSocket clients skip graph snapshot/encoding; REST still sees the mutation.
+    assert "graph" not in types
+    assert manager.graph_broadcasts_skipped >= 1
 
 
 def test_ml_unavailable_pipeline_does_not_crash(
@@ -423,7 +425,8 @@ def test_ml_unavailable_pipeline_does_not_crash(
     assert client.get("/").status_code == 200
     types = [item["type"] for item in broadcasts if isinstance(item, dict)]
     assert "telemetry" in types
-    assert "graph" in types
+    assert "graph" not in types
+    assert manager.graph_broadcasts_skipped >= 1
 
 
 def test_honeytoken_flow_works_without_ml(

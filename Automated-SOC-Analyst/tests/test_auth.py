@@ -7,13 +7,14 @@ from fastapi.testclient import TestClient
 from sqlmodel import delete, select
 
 from app.auth.service import auth_service
-from app.core.database import SessionLocal
+from app.core import database
+from app.core.deps import repository
 from app.models.schemas import EventStatus, EventType, ReviewStatus, TelemetryEventRead, User, UserRole
 from app.services.review_service import HumanReviewService
 
 
 def _seed_user(email: str, password: str, *, role: UserRole = UserRole.ANALYST, active: bool = True) -> User:
-    with SessionLocal() as session:
+    with database.SessionLocal() as session:
         user = User(
             email=email,
             password_hash=auth_service.hash_password(password),
@@ -31,7 +32,7 @@ def _login(client: TestClient, email: str, password: str):
 
 
 def _cleanup_users() -> None:
-    with SessionLocal() as session:
+    with database.SessionLocal() as session:
         session.exec(delete(User))
         session.commit()
 
@@ -157,7 +158,7 @@ def test_duplicate_email_is_rejected(client: TestClient) -> None:
 def test_viewer_cannot_approve_review(client: TestClient) -> None:
     _cleanup_users()
     _seed_user("viewer@example.com", "viewer-password", role=UserRole.VIEWER)
-    review = HumanReviewService().create_pending_review(
+    review = HumanReviewService(repository=repository).create_pending_review(
         event=TelemetryEventRead(
             id=uuid4(),
             timestamp=datetime.now(timezone.utc),
@@ -182,7 +183,7 @@ def test_viewer_cannot_approve_review(client: TestClient) -> None:
 def test_approved_review_records_authenticated_user(client: TestClient) -> None:
     _cleanup_users()
     _seed_user("admin@example.com", "admin-password", role=UserRole.ADMIN)
-    review = HumanReviewService().create_pending_review(
+    review = HumanReviewService(repository=repository).create_pending_review(
         event=TelemetryEventRead(
             id=uuid4(),
             timestamp=datetime.now(timezone.utc),
@@ -211,7 +212,7 @@ def test_approved_review_records_authenticated_user(client: TestClient) -> None:
 
 def test_review_remains_valid_after_restart(client: TestClient) -> None:
     _cleanup_users()
-    review = HumanReviewService().create_pending_review(
+    review = HumanReviewService(repository=repository).create_pending_review(
         event=TelemetryEventRead(
             id=uuid4(),
             timestamp=datetime.now(timezone.utc),
@@ -239,7 +240,7 @@ def test_auth_bootstrap_creates_default_admin_user(client: TestClient) -> None:
     _cleanup_users()
     auth_service.ensure_bootstrap()
 
-    with SessionLocal() as session:
+    with database.SessionLocal() as session:
         users = session.exec(select(User)).all()
 
     assert any(user.email == "admin@example.com" and user.role == UserRole.ADMIN for user in users)
