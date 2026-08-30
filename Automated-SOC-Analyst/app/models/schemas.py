@@ -704,3 +704,44 @@ class EventPipelineResult(BaseModel):
     policy: PolicyDecisionRead
     remediation: RemediationActionRead | None = None
     device: DeviceStateRead | None = None
+
+
+class TelemetryEventBatchCreate(BaseModel):
+    """Wrapper for batch ingestion. Items are validated one-by-one in the router."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    events: list[Any]
+
+
+class BatchEventError(BaseModel):
+    index: int = Field(ge=0)
+    error: str
+
+
+class TelemetryEventBatchResult(BaseModel):
+    """Summary of a batch ingestion run through EventPipeline."""
+
+    total: int = Field(ge=0)
+    processed: int = Field(ge=0)
+    failed: int = Field(ge=0)
+    alerts: int = Field(ge=0)
+    remediations: int = Field(ge=0)
+    processing_time_ms: int = Field(ge=0)
+    errors: list[BatchEventError] = Field(default_factory=list)
+
+
+class AgentAnalysisRead(BaseModel):
+    """Read-only shadow multi-agent analysis. Not an EventPipeline result."""
+
+    event: TelemetryEventRead | None = None
+    detection_source: Literal["ml", "heuristic", "honeytoken"] | None = None
+    risk_score: float | None = Field(default=None, ge=0.0, le=100.0)
+    ml: MLPredictionResponse | None = None
+    graph: GraphRead | None = None
+    graph_neighbors: list[GraphNodeRead] = Field(default_factory=list)
+    policy: PolicyDecisionRead | None = None
+    remediation: RemediationActionRead | None = None
+    remediation_dry_run: bool = True
+    agents: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)

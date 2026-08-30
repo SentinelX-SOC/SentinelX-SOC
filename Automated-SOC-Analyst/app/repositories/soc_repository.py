@@ -43,6 +43,15 @@ class SocRepository:
             statement = select(TelemetryEvent).order_by(TelemetryEvent.timestamp.desc()).offset(offset).limit(limit)
             return list(session.exec(statement).all())
 
+    def list_telemetry_events_chronological(self) -> list[TelemetryEvent]:
+        """Return every persisted telemetry row in replay order for graph hydration."""
+        with self.session_factory() as session:
+            statement = select(TelemetryEvent).order_by(
+                TelemetryEvent.timestamp.asc(),
+                TelemetryEvent.id.asc(),
+            )
+            return list(session.exec(statement).all())
+
     def create_alert(self, alert: Alert) -> Alert:
         with self.session_factory() as session:
             session.add(alert)
@@ -79,12 +88,23 @@ class SocRepository:
         with self.session_factory() as session:
             return session.get(Honeytoken, token_id)
 
+    def list_honeytokens(self) -> list[Honeytoken]:
+        with self.session_factory() as session:
+            return list(session.exec(select(Honeytoken)).all())
+
     def update_honeytoken(self, honeytoken: Honeytoken) -> Honeytoken:
         with self.session_factory() as session:
-            session.add(honeytoken)
+            stored = session.get(Honeytoken, honeytoken.id)
+            if stored is None:
+                raise ValueError(f"Honeytoken not found: {honeytoken.id}")
+            stored.status = honeytoken.status
+            stored.triggered_at = honeytoken.triggered_at
+            stored.triggered_by = honeytoken.triggered_by
+            stored.source_ip = honeytoken.source_ip
+            stored.extra_data = dict(honeytoken.extra_data or {})
             session.commit()
-            session.refresh(honeytoken)
-            return honeytoken
+            session.refresh(stored)
+            return stored
 
     def persist_pipeline_result(
         self,
@@ -94,10 +114,24 @@ class SocRepository:
         remediation: RemediationAction | None = None,
         honeytoken: Honeytoken | None = None,
     ) -> None:
-        self.create_telemetry_event(event)
-        if alert is not None:
-            self.create_alert(alert)
-        if remediation is not None:
-            self.create_remediation(remediation)
-        if honeytoken is not None:
-            self.create_honeytoken(honeytoken)
+        """Persist one pipeline result in a single transaction.
+
+        Honeytoken rows are owned by ``HoneytokenService`` and are not written
+        here. The ``honeytoken`` argument is retained for signature compatibility.
+        """
+        _ = honeytoken
+        event_model = (
+            event if isinstance(event, TelemetryEvent) else TelemetryEvent.model_validate(event.model_dump())
+        )
+        with self.session_factory() as session:
+            try:
+                session.add(event_model)
+                if alert is not None:
+                    session.add(alert)
+                    session.flush()
+                if remediation is not None:
+                    session.add(remediation)
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise

@@ -4,6 +4,7 @@ from app.models.schemas import (
     AlertRead,
     AlertStatus,
     AlertUpdate,
+    AgentAnalysisRead,
     D3Graph,
     D3Link,
     D3Node,
@@ -37,6 +38,8 @@ from app.models.schemas import (
     RemediationActionUpdate,
     RemediationStatus,
     TelemetryEvent,
+    TelemetryEventBatchCreate,
+    TelemetryEventBatchResult,
     TelemetryEventCreate,
     TelemetryEventRead,
 )
@@ -47,6 +50,7 @@ __all__ = [
     "AlertRead",
     "AlertStatus",
     "AlertUpdate",
+    "AgentAnalysisRead",
     "D3Graph",
     "D3Link",
     "D3Node",
@@ -80,6 +84,8 @@ __all__ = [
     "RemediationActionUpdate",
     "RemediationStatus",
     "TelemetryEvent",
+    "TelemetryEventBatchCreate",
+    "TelemetryEventBatchResult",
     "TelemetryEventCreate",
     "TelemetryEventRead",
 ]

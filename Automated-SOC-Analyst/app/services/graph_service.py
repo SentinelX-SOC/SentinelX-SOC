@@ -1,6 +1,9 @@
 """In-memory NetworkX threat graph for telemetry-driven hunting."""
 
+import logging
 from collections import defaultdict
+from datetime import timezone
+from uuid import UUID
 
 import networkx as nx
 
@@ -17,8 +20,10 @@ from app.models.schemas import (
     Position,
     TelemetryEventRead,
 )
+from app.repositories.soc_repository import SocRepository
 
 _UNKNOWN: str = "unknown"
+logger = logging.getLogger(__name__)
 
 _SERVER_MARKERS: tuple[str, ...] = (
     "DC",
@@ -72,6 +77,46 @@ class GraphService:
 
     def __init__(self) -> None:
         self.graph: nx.DiGraph = nx.DiGraph()
+        self._applied_event_ids: set[UUID] = set()
+
+    def hydrate_from_database(self, repository: SocRepository | None = None) -> None:
+        """Rebuild the in-memory graph from persisted telemetry at startup.
+
+        Replays rows through ``add_telemetry_event`` so node/edge IDs and
+        payloads stay identical to live EventPipeline graph updates. Does not
+        broadcast WebSocket events. Failures are logged and swallowed so the
+        backend can still start.
+        """
+        repo = repository or SocRepository()
+        try:
+            stored = repo.list_telemetry_events_chronological()
+        except Exception:
+            logger.exception(
+                "Failed to hydrate graph from persisted telemetry; continuing with in-memory graph"
+            )
+            return
+
+        if self.graph.number_of_nodes() == 0:
+            self._applied_event_ids.clear()
+
+        try:
+            for row in stored:
+                event_id = row.id
+                if event_id in self._applied_event_ids:
+                    continue
+                event = TelemetryEventRead.model_validate(row)
+                timestamp = event.timestamp
+                if timestamp.tzinfo is None:
+                    event = event.model_copy(
+                        update={"timestamp": timestamp.replace(tzinfo=timezone.utc)}
+                    )
+                self.add_telemetry_event(event)
+                self._applied_event_ids.add(event_id)
+        except Exception:
+            logger.exception(
+                "Failed to hydrate graph from persisted telemetry; continuing with in-memory graph"
+            )
+            return
 
     def add_telemetry_event(self, event: TelemetryEventRead) -> None:
         """Add User / Computer / Server nodes and AUTHENTICATED_TO / CONNECTED_TO edges."""
