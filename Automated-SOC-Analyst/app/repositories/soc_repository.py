@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from sqlmodel import Session, select
@@ -12,12 +13,14 @@ from app.models.schemas import (
     Alert,
     Honeytoken,
     HumanReview,
+    PasswordResetToken,
     RemediationAction,
     ReviewStatus,
     TelemetryEvent,
     TelemetryEventRead,
     User,
     UserRole,
+    utc_now,
 )
 
 
@@ -127,6 +130,47 @@ class SocRepository:
             if stored is None:
                 raise ValueError(f"User not found: {user_id}")
             stored.is_active = is_active
+            session.commit()
+            session.refresh(stored)
+            return stored
+
+    def update_user_password(self, user_id: UUID, password_hash: str) -> User:
+        with self.session_factory() as session:
+            stored = session.get(User, user_id)
+            if stored is None:
+                raise ValueError(f"User not found: {user_id}")
+            stored.password_hash = password_hash
+            stored.credentials_version = int(stored.credentials_version or 0) + 1
+            session.commit()
+            session.refresh(stored)
+            return stored
+
+    def create_password_reset_token(
+        self,
+        *,
+        user_id: UUID,
+        token_hash: str,
+        expires_at: datetime,
+    ) -> PasswordResetToken:
+        model = PasswordResetToken(user_id=user_id, token_hash=token_hash, expires_at=expires_at)
+        with self.session_factory() as session:
+            session.add(model)
+            session.commit()
+            session.refresh(model)
+            return model
+
+    def get_password_reset_token(self, token_hash: str) -> PasswordResetToken | None:
+        with self.session_factory() as session:
+            return session.exec(
+                select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)
+            ).first()
+
+    def mark_password_reset_used(self, token_id: UUID) -> PasswordResetToken:
+        with self.session_factory() as session:
+            stored = session.get(PasswordResetToken, token_id)
+            if stored is None:
+                raise ValueError(f"Reset token not found: {token_id}")
+            stored.used_at = utc_now()
             session.commit()
             session.refresh(stored)
             return stored

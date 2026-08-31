@@ -242,8 +242,23 @@ class User(SQLModel, table=True):
     id: UUID = SQLField(default_factory=uuid4, primary_key=True)
     email: str = SQLField(index=True, unique=True, max_length=255)
     password_hash: str = SQLField(max_length=512)
+    display_name: str | None = SQLField(default=None, max_length=255)
+    credentials_version: int = SQLField(default=0)
     role: UserRole = SQLField(default=UserRole.VIEWER, index=True)
     is_active: bool = SQLField(default=True, index=True)
+    created_at: datetime = SQLField(default_factory=utc_now, index=True)
+
+
+class PasswordResetToken(SQLModel, table=True):
+    """Single-use password reset token. The raw token is never stored."""
+
+    __tablename__ = "password_reset_tokens"
+
+    id: UUID = SQLField(default_factory=uuid4, primary_key=True)
+    user_id: UUID = SQLField(foreign_key="users.id", index=True)
+    token_hash: str = SQLField(index=True, unique=True, max_length=128)
+    expires_at: datetime = SQLField(index=True)
+    used_at: datetime | None = SQLField(default=None)
     created_at: datetime = SQLField(default_factory=utc_now, index=True)
 
 

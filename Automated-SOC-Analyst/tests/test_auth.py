@@ -9,7 +9,7 @@ from sqlmodel import delete, select
 from app.auth.service import auth_service
 from app.core import database
 from app.core.deps import repository
-from app.models.schemas import EventStatus, EventType, ReviewStatus, TelemetryEventRead, User, UserRole
+from app.models.schemas import EventStatus, EventType, PasswordResetToken, ReviewStatus, TelemetryEventRead, User, UserRole
 from app.services.review_service import HumanReviewService
 
 
@@ -33,6 +33,7 @@ def _login(client: TestClient, email: str, password: str):
 
 def _cleanup_users() -> None:
     with database.SessionLocal() as session:
+        session.exec(delete(PasswordResetToken))
         session.exec(delete(User))
         session.commit()
 

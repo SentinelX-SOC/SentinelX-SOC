@@ -18,6 +18,7 @@ from app.models.schemas import (  # noqa: F401
     HumanReview,
     RemediationAction,
     TelemetryEvent,
+    PasswordResetToken,
     User,
 )
 
@@ -77,6 +78,28 @@ def reset_database(database_url: str | None = None) -> None:
 def init_db() -> None:
     """Create all discovered SQLModel tables for the existing durable entities."""
     SQLModel.metadata.create_all(engine)
+    _ensure_auth_columns()
+
+
+def _ensure_auth_columns() -> None:
+    """Add auth columns to existing SQLite user tables created before this upgrade."""
+    url = str(getattr(engine, "url", ""))
+    if not url.startswith("sqlite"):
+        return
+    try:
+        with engine.begin() as connection:
+            rows = connection.exec_driver_sql("PRAGMA table_info(users)").fetchall()
+            if not rows:
+                return
+            columns = {row[1] for row in rows}
+            if "display_name" not in columns:
+                connection.exec_driver_sql("ALTER TABLE users ADD COLUMN display_name VARCHAR(255)")
+            if "credentials_version" not in columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE users ADD COLUMN credentials_version INTEGER DEFAULT 0"
+                )
+    except Exception:
+        return
 
 
 def get_db() -> Generator[Session, None, None]:

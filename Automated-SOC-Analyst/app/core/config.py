@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     allowed_origins: list[str] = [
         "http://localhost:3000",
         "http://localhost:5173",
+        "http://127.0.0.1:5173",
     ]
     host: str = "0.0.0.0"
     port: int = 8000
@@ -47,6 +48,13 @@ class Settings(BaseSettings):
     auth_bootstrap_password: str | None = None
     auth_session_ttl_seconds: int = Field(default=3600, ge=60)
     auth_cookie_secure: bool = False
+    frontend_url: str = "http://127.0.0.1:5173"
+    password_reset_dev_mode: bool = False
+    password_reset_ttl_seconds: int = Field(default=3600, ge=60)
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    google_redirect_uri: str = "http://127.0.0.1:8000/api/v1/auth/google/callback"
+    oauth_state_ttl_seconds: int = Field(default=600, ge=60)
 
     # --- Investigation agent (LLM-backed, advisory only; no remediation actions) ---
     investigation_llm_enabled: bool = False

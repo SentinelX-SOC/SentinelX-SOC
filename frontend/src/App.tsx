@@ -27,7 +27,8 @@ import {
   X,
 } from 'lucide-react';
 import './App.css';
-import { getCurrentUser, login, logout, type AuthenticatedUser } from './api/auth';
+import { getCurrentUser, logout, type AuthenticatedUser } from './api/auth';
+import { AuthGate } from './auth/AuthGate';
 import { resolveWebSocketUrl } from './api/client';
 import { ingestEvent } from './api/events';
 import { getHealth } from './api/health';
@@ -66,9 +67,6 @@ const emptyEventForm: TelemetryEventCreate = {
 function App() {
   const [authUser, setAuthUser] = useState<AuthenticatedUser | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
   const [activeScreen, setActiveScreen] = useState<Screen>('overview');
   const [health, setHealth] = useState<HealthRead | null>(null);
   const [graph, setGraph] = useState<GraphRead | null>(null);
@@ -224,7 +222,7 @@ function App() {
   }
 
   if (!authUser) {
-    return <LoginScreen error={authError} email={loginEmail} password={loginPassword} onEmailChange={setLoginEmail} onPasswordChange={setLoginPassword} onLogin={async (email, password) => { setAuthError(null); try { setAuthUser(await login(email, password)); } catch { setAuthError('Invalid email or password'); } }} />;
+    return <AuthGate onAuthenticated={setAuthUser} />;
   }
 
   return (
@@ -274,7 +272,7 @@ function App() {
             <div className="identity-pill">
               <div className="identity-dot" />
               <div><strong>{authUser.email || authUser.username}</strong><span>{authUser.role}</span></div>
-              <button className="text-btn" onClick={async () => { await logout().catch(() => undefined); setAuthUser(null); setLoginEmail(''); setLoginPassword(''); }} aria-label="Sign out">Sign out</button>
+              <button className="text-btn" onClick={async () => { await logout().catch(() => undefined); setAuthUser(null); }} aria-label="Sign out">Sign out</button>
             </div>
             <div className="status-pill neutral">
               <Database size={14} />
@@ -819,22 +817,6 @@ function GraphPreview({ graph }: { graph: GraphRead | null }) {
 
 function AuthLoading() {
   return <main className="auth-shell"><section className="auth-card loading-state"><LoaderCircle className="spin" size={20} /><span>Restoring secure session</span></section></main>;
-}
-
-function LoginScreen({ error, email, password, onEmailChange, onPasswordChange, onLogin }: { error: string | null; email: string; password: string; onEmailChange: (value: string) => void; onPasswordChange: (value: string) => void; onLogin: (email: string, password: string) => Promise<void> }) {
-  const [submitting, setSubmitting] = useState(false);
-
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSubmitting(true);
-    try {
-      await onLogin(email, password);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return <main className="auth-shell"><section className="auth-card" aria-labelledby="login-title"><div className="auth-brand"><div className="brand-mark">OS</div><div><div className="brand-name">Obsidian Sentinel</div><div className="brand-subtitle">SOC Command</div></div></div><div className="auth-heading"><span className="eyebrow">Secure access</span><h1 id="login-title">Sign in to operations</h1><p>Authenticate to access the live SOC workspace.</p></div><form className="auth-form" onSubmit={(event) => void submit(event)}><label><span>Email</span><input type="email" value={email} onChange={(event) => onEmailChange(event.target.value)} autoComplete="email" required /></label><label><span>Password</span><input type="password" value={password} onChange={(event) => onPasswordChange(event.target.value)} autoComplete="current-password" required /></label>{error ? <div className="notice error" role="alert"><CircleAlert size={15} />{error}</div> : null}<button className="action-btn auth-submit" type="submit" disabled={submitting}>{submitting ? <LoaderCircle className="spin" size={15} /> : <Shield size={15} />}{submitting ? 'Signing in...' : 'Sign in'}</button></form><div className="auth-footnote">Enterprise multi-user authentication · role-based access control</div></section></main>;
 }
 
 function getEventSeverity(event: TelemetryEventRead) {

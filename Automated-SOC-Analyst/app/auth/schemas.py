@@ -27,6 +27,7 @@ class AuthenticatedUser(BaseModel):
     id: str | None = None
     username: str
     email: str | None = None
+    display_name: str | None = None
     role: Literal["admin", "analyst", "viewer"]
 
     @model_validator(mode="before")
@@ -44,3 +45,47 @@ class AuthenticatedUser(BaseModel):
 
 class LoginResponse(BaseModel):
     user: AuthenticatedUser
+
+
+class SignupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=120)
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=1, max_length=72)
+    confirm_password: str = Field(min_length=1, max_length=72)
+
+    @model_validator(mode="after")
+    def passwords_match(self) -> "SignupRequest":
+        if self.password != self.confirm_password:
+            raise ValueError("Passwords do not match")
+        return self
+
+
+class PasswordResetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=255)
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=8, max_length=255)
+    password: str = Field(min_length=1, max_length=72)
+    confirm_password: str = Field(min_length=1, max_length=72)
+
+    @model_validator(mode="after")
+    def passwords_match(self) -> "PasswordResetConfirmRequest":
+        if self.password != self.confirm_password:
+            raise ValueError("Passwords do not match")
+        return self
+
+
+class PasswordResetRequestResponse(BaseModel):
+    message: str
+    reset_url: str | None = None
+
+
+class PasswordResetConfirmResponse(BaseModel):
+    message: str
