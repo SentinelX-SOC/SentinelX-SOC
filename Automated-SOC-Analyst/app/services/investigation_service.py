@@ -46,17 +46,18 @@ class InvestigationService:
         malformed, timed out, or otherwise fails to return a valid response.
         """
         context = self._build_context(event, ml_prediction, alert, graph_service)
-        try:
-            result = await self._llm_provider.investigate(context)
-            if self._is_valid_result(result):
-                return result
-        except Exception:
-            pass
+        if self._llm_provider.enabled:
+            try:
+                result = await self._llm_provider.investigate(context)
+                if self._is_valid_result(result):
+                    return result
+            except Exception:
+                pass
         return await self._deterministic_investigate(
             event=event,
             ml_prediction=ml_prediction,
             alert=alert,
-            graph_service=graph_service,
+            neighbor_records=context["graph_context"],
         )
 
     def _build_context(
@@ -66,16 +67,17 @@ class InvestigationService:
         alert: AlertRead | None,
         graph_service: GraphService,
     ) -> dict[str, Any]:
-        neighbors = []
+        neighbors: list[dict[str, Any]] = []
         for entity_id in _candidate_entity_ids(event):
-            for node in graph_service.get_neighbors(entity_id):
-                entity = node.data.entity if node.data else node.id
-                neighbors.append({
-                    "entity": entity,
-                    "node_id": node.id,
-                    "entity_type": node.data.entity_type.value if node.data else None,
-                    "risk_score": float(node.data.risk_score) if node.data else 0.0,
-                })
+            for item in graph_service.get_neighbor_entities(entity_id):
+                neighbors.append(
+                    {
+                        "entity": item["entity"],
+                        "node_id": item["node_id"],
+                        "entity_type": item["entity_type"],
+                        "risk_score": float(item["risk_score"]),
+                    }
+                )
         return {
             "event": event,
             "ml_prediction": ml_prediction,
@@ -109,7 +111,7 @@ class InvestigationService:
         event: TelemetryEventRead,
         ml_prediction: MLPredictionResponse | None,
         alert: AlertRead | None,
-        graph_service: GraphService,
+        neighbor_records: list[dict[str, Any]],
     ) -> InvestigationResult:
         evidence: list[str] = []
         affected_assets: list[str] = []
@@ -127,11 +129,10 @@ class InvestigationService:
                 evidence.append("Alert risk score exceeded the medium-risk threshold.")
 
         graph_neighbors: list[str] = []
-        for entity_id in _candidate_entity_ids(event):
-            for neighbor in graph_service.get_neighbors(entity_id):
-                asset_name = (neighbor.data.entity if neighbor.data else neighbor.id).strip()
-                if asset_name and asset_name not in graph_neighbors:
-                    graph_neighbors.append(asset_name)
+        for item in neighbor_records:
+            asset_name = str(item.get("entity") or item.get("node_id") or "").strip()
+            if asset_name and asset_name not in graph_neighbors:
+                graph_neighbors.append(asset_name)
         if graph_neighbors:
             affected_assets = graph_neighbors[:10]
             evidence.append(

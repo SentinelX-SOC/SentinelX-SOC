@@ -1,8 +1,11 @@
 """In-memory NetworkX threat graph for telemetry-driven hunting."""
 
+from __future__ import annotations
+
 import logging
 from collections import defaultdict
 from datetime import timezone
+from typing import TypedDict
 from uuid import UUID
 
 import networkx as nx
@@ -70,6 +73,15 @@ _COLUMN_X: dict[GraphNodeType, float] = {
 
 _Y_GAP: float = 90.0
 _DEFAULT_X: float = 420.0
+
+
+class NeighborEntity(TypedDict):
+    """Investigation-only neighborhood record. Not a REST/React Flow schema."""
+
+    node_id: str
+    entity: str
+    entity_type: str | None
+    risk_score: float
 
 
 class GraphService:
@@ -222,17 +234,48 @@ class GraphService:
         if not node_ids:
             return []
 
-        neighbor_ids: set[str] = set()
-        for node_id in node_ids:
-            neighbor_ids.update(self.graph.successors(node_id))
-            neighbor_ids.update(self.graph.predecessors(node_id))
-        neighbor_ids.difference_update(node_ids)
-
+        neighbor_ids = self._collect_neighbor_ids(node_ids)
         positions = self._layout_positions()
         return [
             self._to_node_read(node_id, positions.get(node_id, Position()))
             for node_id in sorted(neighbor_ids)
         ]
+
+    def get_neighbor_entities(self, entity_id: str) -> list[NeighborEntity]:
+        """Read-only neighborhood for InvestigationService.
+
+        Uses the same adjacency as ``get_neighbors`` but does not layout the
+        graph or construct ``GraphNodeRead`` objects.
+        """
+        node_ids = self._resolve_node_ids(entity_id)
+        if not node_ids:
+            return []
+        return [self._neighbor_entity(node_id) for node_id in sorted(self._collect_neighbor_ids(node_ids))]
+
+    def _collect_neighbor_ids(self, node_ids: list[str]) -> set[str]:
+        neighbor_ids: set[str] = set()
+        for node_id in node_ids:
+            neighbor_ids.update(self.graph.successors(node_id))
+            neighbor_ids.update(self.graph.predecessors(node_id))
+        neighbor_ids.difference_update(node_ids)
+        return neighbor_ids
+
+    def _neighbor_entity(self, node_id: str) -> NeighborEntity:
+        data = self.graph.nodes[node_id]
+        entity_type = data.get("entity_type")
+        type_value: str | None
+        if isinstance(entity_type, GraphNodeType):
+            type_value = entity_type.value
+        elif entity_type is None:
+            type_value = None
+        else:
+            type_value = str(entity_type)
+        return {
+            "node_id": node_id,
+            "entity": str(data.get("entity", node_id)),
+            "entity_type": type_value,
+            "risk_score": float(data.get("risk_score", 0.0)),
+        }
 
     def _add_user_node(self, event: TelemetryEventRead) -> str | None:
         entity = event.user.strip()

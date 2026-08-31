@@ -20,6 +20,11 @@ from app.models.schemas import InvestigationResult
 class LLMProvider(ABC):
     """Abstract interface implemented by any provider behind the investigation agent."""
 
+    @property
+    def enabled(self) -> bool:
+        """False for the disabled/no-op provider. Investigate is not called when False."""
+        return True
+
     @abstractmethod
     async def investigate(self, context: dict[str, Any]) -> InvestigationResult:
         """Return a structured investigation result given bounded evidence."""
@@ -221,6 +226,10 @@ class LMStudioProvider(LLMProvider):
 
 class NoOpLLMProvider(LLMProvider):
     """Provider stub used when LLM integration is disabled."""
+
+    @property
+    def enabled(self) -> bool:
+        return False
 
     async def investigate(self, context: dict[str, Any]) -> InvestigationResult:
         raise RuntimeError("LLM investigation provider is disabled")
