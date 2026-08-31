@@ -9,6 +9,7 @@ export default defineConfig({
     port: 5173,
   },
   preview: {
-    host: '127.0.0.1',
+    host: '0.0.0.0',
+    allowedHosts: ['disciplined-warmth-production-393e.up.railway.app'],
   },
 })
