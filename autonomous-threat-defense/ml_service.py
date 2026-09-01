@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Any
-
+import os
 import joblib
 import numpy as np
 import pandas as pd
@@ -255,4 +255,8 @@ def predict(request: PredictionRequest) -> PredictionResponse:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("ml_service:app", host="127.0.0.1", port=9000)
+    uvicorn.run(
+    "ml_service:app",
+    host="0.0.0.0",
+    port=int(os.getenv("PORT", "9000")),
+)
