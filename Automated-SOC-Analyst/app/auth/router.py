@@ -1,7 +1,10 @@
 """Persistent authentication routes."""
 
+import html
+import json
+
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.auth.dependencies import get_current_user
 from app.auth.schemas import (
@@ -25,17 +28,57 @@ def _set_session_cookie(response: Response, user: AuthenticatedUser) -> None:
         key=SESSION_COOKIE,
         value=auth_service.issue_session(user),
         max_age=settings.auth_session_ttl_seconds,
+        path="/",
         httponly=True,
         samesite="lax",
         secure=settings.auth_cookie_secure,
     )
 
 
-def _frontend_redirect(query: str = "") -> RedirectResponse:
+def _frontend_url(query: str = "") -> str:
     base = settings.frontend_url.rstrip("/")
-    target = f"{base}/?{query.lstrip('?')}" if query else f"{base}/"
-    redirect = RedirectResponse(url=target, status_code=status.HTTP_302_FOUND)
-    return redirect
+    return f"{base}/?{query.lstrip('?')}" if query else f"{base}/"
+
+
+def _frontend_redirect(query: str = "") -> RedirectResponse:
+    return RedirectResponse(url=_frontend_url(query), status_code=status.HTTP_302_FOUND)
+
+
+def _clear_oauth_state_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=OAUTH_STATE_COOKIE,
+        path="/",
+        samesite="lax",
+        secure=settings.auth_cookie_secure,
+    )
+
+
+def _oauth_success_response() -> HTMLResponse:
+    """Commit soc_session on a first-party document, then send the browser to the SPA.
+
+    A 302 from this callback is a cross-site bounce (Google → API → frontend).
+    Browsers drop SameSite=Lax cookies set on that redirect, so /auth/me sees no
+    session. A 200 HTML response stores the cookie on the API host first.
+    """
+    target = _frontend_url()
+    href = html.escape(target, quote=True)
+    return HTMLResponse(
+        content=(
+            "<!DOCTYPE html>"
+            "<html lang=\"en\">"
+            "<head>"
+            "<meta charset=\"utf-8\">"
+            f"<meta http-equiv=\"refresh\" content=\"0;url={href}\">"
+            "<title>Signing in</title>"
+            "</head>"
+            "<body>"
+            f"<script>window.location.replace({json.dumps(target)});</script>"
+            f"<p>Sign-in complete. <a href=\"{href}\">Continue</a></p>"
+            "</body>"
+            "</html>"
+        ),
+        status_code=status.HTTP_200_OK,
+    )
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -89,6 +132,7 @@ async def google_start() -> RedirectResponse:
         key=OAUTH_STATE_COOKIE,
         value=state,
         max_age=settings.oauth_state_ttl_seconds,
+        path="/",
         httponly=True,
         samesite="lax",
         secure=settings.auth_cookie_secure,
@@ -96,30 +140,30 @@ async def google_start() -> RedirectResponse:
     return redirect
 
 
-@router.get("/google/callback")
+@router.get("/google/callback", response_model=None)
 async def google_callback(
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
     soc_oauth_state: str | None = Cookie(default=None, alias=OAUTH_STATE_COOKIE),
-) -> RedirectResponse:
+) -> RedirectResponse | HTMLResponse:
     if error:
-        redirect = _frontend_redirect("auth_error=google_denied")
+        landing: Response = _frontend_redirect("auth_error=google_denied")
     elif not auth_service.oauth_state_is_valid(state, soc_oauth_state):
-        redirect = _frontend_redirect("auth_error=google_invalid_state")
+        landing = _frontend_redirect("auth_error=google_invalid_state")
     elif not code:
-        redirect = _frontend_redirect("auth_error=google_missing_code")
+        landing = _frontend_redirect("auth_error=google_missing_code")
     else:
         try:
             user = await auth_service.complete_google_login(code)
-            redirect = _frontend_redirect()
-            _set_session_cookie(redirect, user)
+            landing = _oauth_success_response()
+            _set_session_cookie(landing, user)
         except PermissionError:
-            redirect = _frontend_redirect("auth_error=google_account_disabled")
+            landing = _frontend_redirect("auth_error=google_account_disabled")
         except Exception:
-            redirect = _frontend_redirect("auth_error=google_failed")
-    redirect.delete_cookie(key=OAUTH_STATE_COOKIE, samesite="lax", secure=settings.auth_cookie_secure)
-    return redirect
+            landing = _frontend_redirect("auth_error=google_failed")
+    _clear_oauth_state_cookie(landing)
+    return landing
 
 
 @router.get("/me", response_model=AuthenticatedUser)
@@ -129,4 +173,4 @@ async def me(user: AuthenticatedUser = Depends(get_current_user)) -> Authenticat
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(response: Response) -> None:
-    response.delete_cookie(key=SESSION_COOKIE, samesite="lax", secure=settings.auth_cookie_secure)
+    response.delete_cookie(key=SESSION_COOKIE, path="/", samesite="lax", secure=settings.auth_cookie_secure)

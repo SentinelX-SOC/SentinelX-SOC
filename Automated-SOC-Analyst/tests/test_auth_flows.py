@@ -114,6 +114,13 @@ def _enable_google(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "google_client_secret", "test-google-client-secret")
 
 
+def _session_set_cookie_header(response) -> str:
+    headers = response.headers.get_list("set-cookie")
+    match = next((item for item in headers if item.lower().startswith(f"{SESSION_COOKIE}=")), "")
+    assert match, "soc_session Set-Cookie header is missing"
+    return match
+
+
 def test_signup_success_hashes_password_and_creates_session(client: TestClient) -> None:
     _cleanup_auth()
     response = client.post("/api/v1/auth/signup", json=_signup_payload())
@@ -373,14 +380,20 @@ def test_google_callback_creates_user_and_session(client: TestClient, monkeypatc
         params={"code": "google-auth-code", "state": state},
         follow_redirects=False,
     )
-    assert response.status_code == 302
-    location = urlparse(response.headers["location"])
-    assert location.hostname == "127.0.0.1"
-    assert location.port == 5173
+    assert response.status_code == 200
+    assert "text/html" in response.headers.get("content-type", "")
+    assert settings.frontend_url.rstrip("/") in response.text
+    assert "localhost:5173" not in response.text
     assert SESSION_COOKIE in response.cookies
-    set_cookie = ",".join(response.headers.get_list("set-cookie"))
-    assert SESSION_COOKIE in set_cookie
-    assert "domain=localhost" not in set_cookie.lower()
+    cookie_header = _session_set_cookie_header(response)
+    attributes = cookie_header.split(";", 1)[1] if ";" in cookie_header else ""
+    attr_lower = attributes.lower()
+    assert "httponly" in attr_lower
+    assert "samesite=lax" in attr_lower
+    assert "path=/" in attr_lower
+    assert "domain=" not in attr_lower
+    assert "secure" not in attr_lower
+    assert f"max-age={settings.auth_session_ttl_seconds}" in attr_lower
     me = client.get(
         "/api/v1/auth/me",
         headers={"Origin": "http://127.0.0.1:5173"},
@@ -407,7 +420,8 @@ def test_google_callback_reuses_existing_email_user(client: TestClient, monkeypa
         params={"code": "google-auth-code", "state": state},
         follow_redirects=False,
     )
-    assert response.status_code == 302
+    assert response.status_code == 200
+    assert SESSION_COOKIE in response.cookies
     with database.SessionLocal() as session:
         users = session.exec(select(User).where(User.email == "google.user@example.com")).all()
     assert len(users) == 1
@@ -488,7 +502,7 @@ def test_google_protected_endpoint_after_login(client: TestClient, monkeypatch: 
         "/api/v1/auth/google/callback",
         params={"code": "google-auth-code", "state": state},
         follow_redirects=False,
-    ).status_code == 302
+    ).status_code == 200
     reviews = client.get("/api/v1/reviews")
     assert reviews.status_code == 200
 
