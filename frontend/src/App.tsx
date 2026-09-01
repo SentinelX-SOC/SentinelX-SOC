@@ -668,7 +668,7 @@ function SimulationPanel({ simulation, setSimulation }: { simulation: Simulation
   const state = simulation?.state ?? 'idle';
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [filePath, setFilePath] = useState('../autonomous-threat-defense/data/raw/auth.txt.gz');
+  const [filePath, setFilePath] = useState('data/auth_sample.txt');
   const controls = [
     { label: 'Start', allowed: state === 'idle' || state === 'stopped', action: () => startSimulation({ file_path: filePath, speed_multiplier: 1.5, limit: 250 }), icon: Play },
     { label: 'Pause', allowed: state === 'running', action: pauseSimulation, icon: TimerReset },
@@ -868,3 +868,4 @@ function formatCurrency(value: number | null | undefined) {
 }
 
 export default App;
+
