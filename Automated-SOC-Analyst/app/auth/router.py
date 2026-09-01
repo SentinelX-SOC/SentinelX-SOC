@@ -23,6 +23,11 @@ from app.core.config import settings
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _cookie_samesite() -> str:
+    """Lax is enough on local same-site HTTP. Separate HTTPS Railway hosts are cross-site."""
+    return "none" if settings.auth_cookie_secure else "lax"
+
+
 def _set_session_cookie(response: Response, user: AuthenticatedUser) -> None:
     response.set_cookie(
         key=SESSION_COOKIE,
@@ -30,7 +35,7 @@ def _set_session_cookie(response: Response, user: AuthenticatedUser) -> None:
         max_age=settings.auth_session_ttl_seconds,
         path="/",
         httponly=True,
-        samesite="lax",
+        samesite=_cookie_samesite(),
         secure=settings.auth_cookie_secure,
     )
 
@@ -48,7 +53,7 @@ def _clear_oauth_state_cookie(response: Response) -> None:
     response.delete_cookie(
         key=OAUTH_STATE_COOKIE,
         path="/",
-        samesite="lax",
+        samesite=_cookie_samesite(),
         secure=settings.auth_cookie_secure,
     )
 
@@ -134,7 +139,7 @@ async def google_start() -> RedirectResponse:
         max_age=settings.oauth_state_ttl_seconds,
         path="/",
         httponly=True,
-        samesite="lax",
+        samesite=_cookie_samesite(),
         secure=settings.auth_cookie_secure,
     )
     return redirect
@@ -173,4 +178,9 @@ async def me(user: AuthenticatedUser = Depends(get_current_user)) -> Authenticat
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(response: Response) -> None:
-    response.delete_cookie(key=SESSION_COOKIE, path="/", samesite="lax", secure=settings.auth_cookie_secure)
+    response.delete_cookie(
+        key=SESSION_COOKIE,
+        path="/",
+        samesite=_cookie_samesite(),
+        secure=settings.auth_cookie_secure,
+    )

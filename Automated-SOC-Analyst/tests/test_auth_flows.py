@@ -408,6 +408,36 @@ def test_google_callback_creates_user_and_session(client: TestClient, monkeypatc
     assert stored.display_name == "Google User"
 
 
+def test_secure_session_cookie_uses_samesite_none(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    _cleanup_auth()
+    monkeypatch.setattr(settings, "auth_cookie_secure", True)
+    _enable_google(monkeypatch)
+    _install_google_http(monkeypatch)
+    start = client.get("/api/v1/auth/google/start", follow_redirects=False)
+    start_attrs = ",".join(start.headers.get_list("set-cookie")).split(";", 1)[-1].lower()
+    assert "samesite=none" in start_attrs
+    assert "secure" in start_attrs
+    state = start.cookies[OAUTH_STATE_COOKIE]
+    response = client.get(
+        "/api/v1/auth/google/callback",
+        params={"code": "google-auth-code", "state": state},
+        cookies={OAUTH_STATE_COOKIE: state},
+        follow_redirects=False,
+    )
+    cookie_header = _session_set_cookie_header(response)
+    attributes = cookie_header.split(";", 1)[1] if ";" in cookie_header else ""
+    attr_lower = attributes.lower()
+    assert "httponly" in attr_lower
+    assert "samesite=none" in attr_lower
+    assert "secure" in attr_lower
+    assert "path=/" in attr_lower
+    assert "domain=" not in attr_lower
+    session = response.cookies[SESSION_COOKIE]
+    me = client.get("/api/v1/auth/me", cookies={SESSION_COOKIE: session})
+    assert me.status_code == 200
+    assert me.json()["email"] == "google.user@example.com"
+
+
 def test_google_callback_reuses_existing_email_user(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     _cleanup_auth()
     existing = _seed_user("google.user@example.com", "already-set-password", role=UserRole.ANALYST)
