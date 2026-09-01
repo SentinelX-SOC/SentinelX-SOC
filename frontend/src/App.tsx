@@ -153,15 +153,19 @@ function App() {
       }
       if (event.type === 'alert' && event.payload && typeof event.payload === 'object' && 'entity' in event.payload) {
         setLastAlert(event.payload as AlertRead);
+        void listHoneytokens().then(setHoneytokens).catch(() => undefined);
+        void listReviews().then(setReviews).catch(() => undefined);
       }
       if (event.type === 'graph' && event.payload && typeof event.payload === 'object' && 'nodes' in event.payload && 'edges' in event.payload) {
         setGraph(event.payload as GraphRead);
       }
       if (event.type === 'remediation_executed') {
         setRemediationActivity((prev) => [{ action: event.action ?? 'remediation', device_id: event.device_id, alert_id: event.alert_id, received_at: new Date().toISOString() }, ...prev].slice(0, 12));
+        void listReviews().then(setReviews).catch(() => undefined);
       }
       if (event.type === 'honeytoken_triggered') {
         void listHoneytokens().then(setHoneytokens).catch(() => undefined);
+        void listReviews().then(setReviews).catch(() => undefined);
       }
     });
     return () => {
@@ -190,6 +194,26 @@ function App() {
       setLiveEvents((prev) => [{ ...result.event, risk_score: result.risk_score, anomaly_score: result.ml?.anomaly_score ?? undefined, confidence: result.ml?.confidence ?? undefined, detection_source: result.detection_source }, ...prev].slice(0, 20));
       if (result.alert) {
         setLastAlert(result.alert);
+      }
+      if (result.honeytoken) {
+        setHoneytokens((prev) => {
+          if (prev.some((token) => token.id === result.honeytoken?.id)) {
+            return prev.map((token) => token.id === result.honeytoken?.id ? result.honeytoken as HoneytokenRead : token);
+          }
+          return [result.honeytoken as HoneytokenRead, ...prev];
+        });
+      } else {
+        void listHoneytokens().then(setHoneytokens).catch(() => undefined);
+      }
+      if (result.review) {
+        setReviews((prev) => {
+          if (prev.some((entry) => entry.id === result.review?.id)) {
+            return prev.map((entry) => entry.id === result.review?.id ? result.review as HumanReviewRead : entry);
+          }
+          return [result.review as HumanReviewRead, ...prev];
+        });
+      } else {
+        void listReviews().then(setReviews).catch(() => undefined);
       }
       setEventForm((prev) => ({ ...prev, timestamp: new Date().toISOString() }));
     } catch (error) {

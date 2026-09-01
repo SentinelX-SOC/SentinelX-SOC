@@ -12,6 +12,7 @@ from app.core.deps import (
     manager,
     remediation_service,
     repository,
+    review_service,
 )
 from main import app
 
@@ -30,6 +31,7 @@ def client() -> Iterator[TestClient]:
     auth_service.ensure_bootstrap()
     honeytoken_service.clear()
     remediation_service.clear()
+    review_service.clear()
     graph_service.graph.clear()
     graph_service._applied_event_ids.clear()
     manager.active_connections.clear()
@@ -37,6 +39,7 @@ def client() -> Iterator[TestClient]:
     manager.reset_broadcast_counters()
     with TestClient(app) as test_client:
         honeytoken_service.clear()
+        review_service.clear()
         graph_service.graph.clear()
         graph_service._applied_event_ids.clear()
         manager.cancel_pending_graph_broadcast()
@@ -44,6 +47,7 @@ def client() -> Iterator[TestClient]:
         yield test_client
     honeytoken_service.clear()
     remediation_service.clear()
+    review_service.clear()
     graph_service.graph.clear()
     graph_service._applied_event_ids.clear()
     manager.active_connections.clear()

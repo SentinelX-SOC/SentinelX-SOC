@@ -20,20 +20,9 @@ detector = AnomalyDetector(ml_service=ml_service)
 policy_service = PolicyService()
 remediation_service = RemediationService()
 repository = SocRepository()
-review_service = HumanReviewService(repository=repository)
-event_pipeline = EventPipeline(
-    graph_service=graph_service,
-    detector=detector,
-    policy_service=policy_service,
-    remediation_service=remediation_service,
-    manager=manager,
+review_service = HumanReviewService(
     repository=repository,
-)
-simulation_engine = SimulationEngine(
-    graph_service,
-    detector,
-    manager,
-    pipeline=event_pipeline,
+    remediation_service=remediation_service,
 )
 honeytoken_service = HoneytokenService(
     graph_service=graph_service,
@@ -42,6 +31,23 @@ honeytoken_service = HoneytokenService(
     remediation_service=remediation_service,
     manager=manager,
     repository=repository,
+    review_service=review_service,
+)
+event_pipeline = EventPipeline(
+    graph_service=graph_service,
+    detector=detector,
+    policy_service=policy_service,
+    remediation_service=remediation_service,
+    manager=manager,
+    repository=repository,
+    honeytoken_service=honeytoken_service,
+    review_service=review_service,
+)
+simulation_engine = SimulationEngine(
+    graph_service,
+    detector,
+    manager,
+    pipeline=event_pipeline,
 )
 multi_agent_service = MultiAgentService(
     detector=detector,

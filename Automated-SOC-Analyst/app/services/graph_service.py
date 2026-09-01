@@ -228,6 +228,44 @@ class GraphService:
         if user_id is not None and device_node is None:
             self._add_edge(user_id, ht_node, GraphEdgeType.TRIGGERED, event)
 
+    def record_honeytoken_deploy(
+        self,
+        event: TelemetryEventRead,
+        *,
+        honeytoken_id: str,
+        honeytoken_name: str,
+        device_id: str | None,
+    ) -> None:
+        """Place an active honeytoken next to the suspicious entity before any trigger."""
+        user_id = self._add_user_node(event)
+
+        device_node: str | None = None
+        entity = (device_id or event.source or "").strip()
+        if entity and entity.lower() != _UNKNOWN:
+            device_node = f"host:{entity}"
+            self._upsert_node(
+                device_node,
+                entity=entity,
+                node_type=GraphNodeType.DEVICE,
+                event=event,
+            )
+
+        ht_node = f"honeytoken:{honeytoken_id}"
+        self._upsert_node(
+            ht_node,
+            entity=honeytoken_id,
+            node_type=GraphNodeType.HONEYTOKEN,
+            event=event,
+        )
+        self.graph.nodes[ht_node]["label"] = honeytoken_name
+
+        if user_id is not None and device_node is not None:
+            self._add_edge(user_id, device_node, GraphEdgeType.AUTHENTICATED_TO, event)
+        if device_node is not None:
+            self._add_edge(device_node, ht_node, GraphEdgeType.CONNECTED_TO, event)
+        elif user_id is not None:
+            self._add_edge(user_id, ht_node, GraphEdgeType.CONNECTED_TO, event)
+
     def get_neighbors(self, entity_id: str) -> list[GraphNodeRead]:
         """Return inbound and outbound adjacent nodes for threat-hunting queries."""
         node_ids = self._resolve_node_ids(entity_id)

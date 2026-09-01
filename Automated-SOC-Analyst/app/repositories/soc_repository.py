@@ -56,6 +56,10 @@ class SocRepository:
             session.refresh(model)
             return model
 
+    def get_telemetry_event(self, event_id: UUID) -> TelemetryEvent | None:
+        with self.session_factory() as session:
+            return session.get(TelemetryEvent, event_id)
+
     def get_telemetry_events(self, *, limit: int = 100, offset: int = 0) -> list[TelemetryEvent]:
         with self.session_factory() as session:
             statement = select(TelemetryEvent).order_by(TelemetryEvent.timestamp.desc()).offset(offset).limit(limit)
@@ -217,6 +221,9 @@ class SocRepository:
             stored.reviewed_by = review.reviewed_by
             stored.reviewed_at = review.reviewed_at
             stored.review_comment = review.review_comment
+            stored.reason = review.reason
+            stored.risk_score = review.risk_score
+            stored.alert_id = review.alert_id
             session.commit()
             session.refresh(stored)
             return stored

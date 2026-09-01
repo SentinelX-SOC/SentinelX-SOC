@@ -29,6 +29,7 @@ from app.services.detection import AnomalyDetector
 from app.services.graph_service import GraphService
 from app.services.policy_service import PolicyService
 from app.services.remediation_service import RemediationService
+from app.services.review_service import HumanReviewService
 from app.services.websocket import ConnectionManager
 
 HONEYTOKEN_CONFIDENCE: float = 0.99
@@ -62,6 +63,7 @@ class HoneytokenService:
         remediation_service: RemediationService,
         manager: ConnectionManager,
         repository: SocRepository | None = None,
+        review_service: HumanReviewService | None = None,
     ) -> None:
         self.graph_service = graph_service
         self.detector = detector
@@ -69,13 +71,32 @@ class HoneytokenService:
         self.remediation_service = remediation_service
         self.manager = manager
         self.repository = repository or SocRepository()
+        self.review_service = review_service
         self._tokens: dict[str, Honeytoken] = {}
         self._events: dict[str, list[HoneytokenEventRead]] = {}
         self._alerts: dict[str, Alert] = {}
         self._results: dict[str, HoneytokenTriggerResult] = {}
 
-    def deploy(self, request: HoneytokenDeployRequest) -> HoneytokenRead:
+    def deploy(
+        self,
+        request: HoneytokenDeployRequest,
+        *,
+        associated_user: str | None = None,
+        associated_device: str | None = None,
+        associated_event_id: str | None = None,
+    ) -> HoneytokenRead:
         token_id = f"HT-{uuid4().hex[:8].upper()}"
+        extra_data: dict[str, object] = {
+            "decoy": True,
+            "generator": "honeytoken_service",
+            "not_a_real_secret": True,
+        }
+        if associated_user:
+            extra_data["associated_user"] = associated_user
+        if associated_device:
+            extra_data["associated_device"] = associated_device
+        if associated_event_id:
+            extra_data["associated_event_id"] = associated_event_id
         token = Honeytoken(
             id=token_id,
             type=request.type,
@@ -83,16 +104,73 @@ class HoneytokenService:
             value=_fake_value(request.type, token_id, request.name),
             status=HoneytokenStatus.ACTIVE,
             description=request.description,
-            extra_data={
-                "decoy": True,
-                "generator": "honeytoken_service",
-                "not_a_real_secret": True,
-            },
+            extra_data=extra_data,
         )
         self._tokens[token_id] = token
         self._events[token_id] = []
         self._persist_honeytoken_safely(token, insert=True)
         return HoneytokenRead.model_validate(token)
+
+    def find_for_entity(
+        self,
+        *,
+        user: str | None = None,
+        device: str | None = None,
+        active_only: bool = False,
+    ) -> HoneytokenRead | None:
+        user_key = (user or "").strip()
+        device_key = (device or "").strip()
+        if not user_key and not device_key:
+            return None
+        for token in self._tokens.values():
+            if active_only and token.status is not HoneytokenStatus.ACTIVE:
+                continue
+            if token.status is HoneytokenStatus.INACTIVE:
+                continue
+            meta = token.extra_data or {}
+            associated_user = str(meta.get("associated_user") or "")
+            associated_device = str(meta.get("associated_device") or "")
+            if device_key and associated_device == device_key:
+                return HoneytokenRead.model_validate(token)
+            if user_key and associated_user == user_key:
+                return HoneytokenRead.model_validate(token)
+        return None
+
+    def deploy_for_event(
+        self,
+        event: TelemetryEventRead,
+        *,
+        device_id: str | None = None,
+    ) -> HoneytokenRead:
+        device = (device_id or event.source or "").strip()
+        existing = self.find_for_entity(user=event.user, device=device)
+        if existing is not None:
+            return existing
+        user = (event.user or "unknown").strip() or "unknown"
+        name = f"Auto decoy for {user}"[:255]
+        description = (
+            f"Automatically deployed after high-risk telemetry from {event.source} ({user})"
+        )[:1024]
+        deployed = self.deploy(
+            HoneytokenDeployRequest(
+                type=HoneytokenType.CREDENTIAL,
+                name=name,
+                description=description,
+            ),
+            associated_user=user,
+            associated_device=device or None,
+            associated_event_id=str(event.id),
+        )
+        try:
+            self.graph_service.record_honeytoken_deploy(
+                event,
+                honeytoken_id=deployed.id,
+                honeytoken_name=deployed.name,
+                device_id=device or None,
+            )
+        except Exception:
+            logger.exception("Failed to attach deployed honeytoken to the graph")
+        return deployed
 
     def list_active(self) -> list[HoneytokenRead]:
         return [
@@ -171,10 +249,13 @@ class HoneytokenService:
         remediation: RemediationActionRead | None = None
         device = None
         remediation_model: RemediationAction | None = None
+        pending_review = self._pending_review_for_trigger(token, request, event)
+        # Policy still evaluates; isolation waits if a Human Review is already open.
         if (
             policy.allowed
             and policy.action is not None
             and request.device_id
+            and pending_review is None
         ):
             remediation_model, device = self.remediation_service.isolate_device(
                 request.device_id,
@@ -197,6 +278,22 @@ class HoneytokenService:
             duplicate=False,
         )
         self._events[token.id].append(event_read)
+
+        if self.review_service is not None:
+            try:
+                meta = token.extra_data or {}
+                evidence_device = str(
+                    meta.get("associated_device") or request.device_id or event.source or ""
+                )
+                self.review_service.record_honeytoken_evidence(
+                    event=event,
+                    device_id=evidence_device or None,
+                    honeytoken_id=token.id,
+                    risk_score=risk_100,
+                    alert_id=alert.id,
+                )
+            except Exception:
+                logger.exception("Failed to record honeytoken evidence on human review")
 
         await self._broadcast_trigger(
             token=token,
@@ -222,6 +319,28 @@ class HoneytokenService:
         )
         self._results[token.id] = result
         return result
+
+    def _pending_review_for_trigger(
+        self,
+        token: Honeytoken,
+        request: HoneytokenTriggerRequest,
+        event: TelemetryEventRead,
+    ):
+        """Reuse the existing pending review as the isolation gate for this incident."""
+        if self.review_service is None:
+            return None
+        meta = token.extra_data or {}
+        candidates = (
+            meta.get("associated_device"),
+            request.device_id,
+            event.source,
+            meta.get("associated_user"),
+        )
+        for candidate in candidates:
+            review = self.review_service.pending_for_entity(str(candidate) if candidate else None)
+            if review is not None:
+                return review
+        return None
 
     def _persist_honeytoken_safely(
         self,

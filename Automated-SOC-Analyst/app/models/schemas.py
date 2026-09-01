@@ -815,6 +815,8 @@ class EventPipelineResult(BaseModel):
     policy: PolicyDecisionRead
     remediation: RemediationActionRead | None = None
     device: DeviceStateRead | None = None
+    honeytoken: HoneytokenRead | None = None
+    review: HumanReviewRead | None = None
 
 
 class TelemetryEventBatchCreate(BaseModel):

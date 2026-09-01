@@ -186,6 +186,8 @@ export interface EventPipelineResult {
   policy: PolicyDecisionRead;
   remediation: RemediationActionRead | null;
   device: DeviceStateRead | null;
+  honeytoken?: HoneytokenRead | null;
+  review?: HumanReviewRead | null;
   estimated_cost?: CostEstimate | null;
 }
 

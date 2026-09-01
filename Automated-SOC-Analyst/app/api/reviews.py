@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth.dependencies import get_current_user, require_review_action
 from app.auth.schemas import AuthenticatedUser
-from app.core.deps import get_review_service
+from app.core.deps import get_manager, get_review_service
 from app.models.schemas import HumanReviewRead, ReviewDecisionRequest, ReviewStatus
 from app.services.review_service import HumanReviewService
+from app.services.websocket import ConnectionManager
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
@@ -61,8 +62,20 @@ async def approve_review(
     body: ReviewDecisionRequest | None = None,
     user: AuthenticatedUser = Depends(require_review_action),
     review_service: HumanReviewService = Depends(get_review_service),
+    manager: ConnectionManager = Depends(get_manager),
 ) -> HumanReviewRead:
-    return _decision_request(review_service, review_id, ReviewStatus.APPROVED, user, body)
+    updated = _decision_request(review_service, review_id, ReviewStatus.APPROVED, user, body)
+    action, device_id = review_service.execute_approved_isolation(updated)
+    if action is not None:
+        await manager.broadcast_json(
+            {
+                "type": "remediation_executed",
+                "event": "REMEDIATION_EXECUTED",
+                "action": action.action_type.value,
+                "device_id": device_id,
+            }
+        )
+    return updated
 
 
 @router.post("/{review_id}/reject", response_model=HumanReviewRead)
