@@ -116,19 +116,19 @@ class SimulationEngine:
             await self.pipeline.process(event, device_id=event.source)
             return
         self.graph_service.add_telemetry_event(event)
-        risk_score = self.detector.predict_risk(event)
+        risk_01 = self.detector.predict_risk(event)
+        risk_100 = min(100.0, round(risk_01 * 100.0, 2))
 
-        broadcast_risk = risk_score * 100.0 if 0.0 <= risk_score <= 1.0 else risk_score
         await self.manager.broadcast_json(
             {
                 "type": "telemetry",
                 "payload": event,
-                "risk_score": broadcast_risk,
+                "risk_score": risk_100,
             }
         )
 
-        if risk_score > ALERT_RISK_THRESHOLD:
-            alert = _build_alert(event, risk_score)
+        if risk_100 >= ALERT_RISK_THRESHOLD:
+            alert = _build_alert(event, risk_100)
             await self.manager.broadcast_json(
                 {
                     "type": "alert",
@@ -149,10 +149,10 @@ def _to_telemetry_read(event: TelemetryEventCreate) -> TelemetryEventRead:
     return TelemetryEventRead.model_validate({"id": uuid4(), **event.model_dump()})
 
 
-def _build_alert(event: TelemetryEventRead, risk_score: float) -> Alert:
+def _build_alert(event: TelemetryEventRead, risk_100: float) -> Alert:
     entity = event.user if event.user.lower() != "unknown" else event.destination
     return Alert(
-        risk_score=min(100.0, round(risk_score * 100.0, 2)),
+        risk_score=min(100.0, round(risk_100, 2)),
         entity=entity,
         status=AlertStatus.OPEN,
     )

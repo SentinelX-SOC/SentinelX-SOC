@@ -1,5 +1,6 @@
 """Honeytoken API and pipeline tests. Does not require LANL data."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.core.deps import manager
@@ -58,7 +59,7 @@ def test_trigger_honeytoken(client: TestClient, broadcasts: list[object]) -> Non
     assert payload["event"]["event_type"] == EventType.HONEYTOKEN_TRIGGERED.value
     assert payload["severity"] == "critical"
     assert payload["confidence"] == 0.99
-    assert payload["risk_score"] >= 90
+    assert payload["risk_score"] == pytest.approx(99.0)
     assert payload["alert"] is not None
     assert payload["policy"]["allowed"] is True
     assert payload["policy"]["action"] == RemediationActionType.ISOLATE_DEVICE.value

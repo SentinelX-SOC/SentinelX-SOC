@@ -28,7 +28,7 @@ from app.services.policy_service import PolicyService
 from app.services.remediation_service import RemediationService
 from app.services.websocket import ConnectionManager
 
-ALERT_RISK_THRESHOLD: float = 0.80
+ALERT_RISK_THRESHOLD: float = 80.0
 logger = logging.getLogger(__name__)
 
 
@@ -78,7 +78,7 @@ class EventPipeline:
         )
 
         alert_model: Alert | None = None
-        if score.risk_01 > ALERT_RISK_THRESHOLD:
+        if score.risk_100 >= ALERT_RISK_THRESHOLD:
             alert_model = _build_alert(event, score.risk_100)
 
         alert_read = (
@@ -122,7 +122,7 @@ class EventPipeline:
 
         await self._broadcast(
             event=event,
-            risk_01=score.risk_01,
+            risk_100=score.risk_100,
             alert=alert_read,
             device_id=target if device is not None else None,
             remediation=remediation,
@@ -201,17 +201,16 @@ class EventPipeline:
         self,
         *,
         event: TelemetryEventRead,
-        risk_01: float,
+        risk_100: float,
         alert: AlertRead | None,
         device_id: str | None,
         remediation: RemediationActionRead | None,
     ) -> None:
-        broadcast_risk = risk_01 * 100.0 if 0.0 <= risk_01 <= 1.0 else risk_01
         await self.manager.broadcast_json(
             {
                 "type": "telemetry",
                 "payload": event,
-                "risk_score": broadcast_risk,
+                "risk_score": risk_100,
             }
         )
         if alert is not None:

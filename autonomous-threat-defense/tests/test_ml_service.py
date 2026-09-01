@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 import ml_service
@@ -57,6 +58,21 @@ def test_fresh_inference_uses_ordered_eleven_feature_contract() -> None:
     assert 0.0 <= result.anomaly_score <= 1.0
     assert 0.0 <= result.risk_score <= 100.0
     assert 0.0 <= result.confidence <= 1.0
+
+
+def test_fresh_single_login_normalized_risk_is_above_eighty() -> None:
+    """Live adapter: raw ≈ 0.438 / threshold ≈ 0.534 → risk_100 ≈ 81.9, not 43.8."""
+    model = DemoModel(ROOT)
+    result = model.predict(_request())
+    expected = min(100.0, result.anomaly_score / model.threshold * 100.0)
+
+    assert model.threshold == pytest.approx(0.5344558677215262)
+    assert result.anomaly_score == pytest.approx(0.438, abs=0.02)
+    assert result.risk_score == pytest.approx(expected, abs=0.05)
+    assert result.risk_score == pytest.approx(81.9, abs=1.0)
+    assert result.risk_score >= 80.0
+    assert result.anomaly_score < 0.80
+    assert result.risk_score != pytest.approx(result.anomaly_score * 100.0, abs=1.0)
 
 
 def test_fresh_inference_does_not_require_lookup_parquet(monkeypatch) -> None:  # type: ignore[no-untyped-def]

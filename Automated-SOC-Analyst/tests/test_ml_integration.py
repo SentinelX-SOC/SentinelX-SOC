@@ -525,3 +525,114 @@ def test_score_event_skips_ml_for_honeytoken() -> None:
     assert score.source == "honeytoken"
     assert score.ml_prediction is None
     assert score.risk_01 == pytest.approx(0.99)
+    assert score.risk_100 == pytest.approx(99.0)
+
+
+def _score_with_units(
+    *,
+    risk_01: float,
+    risk_100: float,
+    prediction: str | None = "normal",
+) -> DetectionScore:
+    ml = None
+    if prediction is not None:
+        ml = MLPredictionResponse(
+            event_id="evt-units",
+            prediction=prediction,
+            anomaly_score=risk_01,
+            risk_score=risk_100,
+            confidence=0.5,
+        )
+    return DetectionScore(
+        risk_01=risk_01,
+        risk_100=risk_100,
+        source="ml" if ml is not None else "heuristic",
+        ml_prediction=ml,
+    )
+
+
+def test_alert_gate_uses_normalized_risk_100_below_eighty(
+    broadcasts: list[object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_score(_event: TelemetryEventRead) -> DetectionScore:
+        return _score_with_units(risk_01=0.427, risk_100=79.9, prediction="normal")
+
+    monkeypatch.setattr(event_pipeline.detector, "score_event", fake_score)
+    result = _run(event_pipeline.process(_event(), device_id="D003"))
+    telemetry = next(item for item in broadcasts if isinstance(item, dict) and item.get("type") == "telemetry")
+    assert result.alert is None
+    assert result.remediation is None
+    assert result.policy.allowed is False
+    assert telemetry["risk_score"] == pytest.approx(79.9)
+    assert "alert" not in {item.get("type") for item in broadcasts if isinstance(item, dict)}
+
+
+def test_alert_gate_fires_at_exactly_eighty(
+    broadcasts: list[object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_score(_event: TelemetryEventRead) -> DetectionScore:
+        return _score_with_units(risk_01=0.4276, risk_100=80.0, prediction="normal")
+
+    monkeypatch.setattr(event_pipeline.detector, "score_event", fake_score)
+    result = _run(event_pipeline.process(_event(), device_id="D003"))
+    telemetry = next(item for item in broadcasts if isinstance(item, dict) and item.get("type") == "telemetry")
+    assert result.alert is not None
+    assert result.alert.risk_score == pytest.approx(80.0)
+    assert result.remediation is None
+    assert result.policy.allowed is False
+    assert telemetry["risk_score"] == pytest.approx(80.0)
+    assert "alert" in {item.get("type") for item in broadcasts if isinstance(item, dict)}
+
+
+def test_alert_and_websocket_use_risk_100_not_raw_anomaly(
+    broadcasts: list[object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_score(_event: TelemetryEventRead) -> DetectionScore:
+        return _score_with_units(risk_01=0.438, risk_100=81.9, prediction="normal")
+
+    monkeypatch.setattr(event_pipeline.detector, "score_event", fake_score)
+    result = _run(event_pipeline.process(_event(), device_id="D003"))
+    telemetry = next(item for item in broadcasts if isinstance(item, dict) and item.get("type") == "telemetry")
+    assert result.risk_score == pytest.approx(81.9)
+    assert result.alert is not None
+    assert result.alert.risk_score == pytest.approx(81.9)
+    assert telemetry["risk_score"] == pytest.approx(81.9)
+    assert telemetry["risk_score"] != pytest.approx(43.8)
+    assert result.remediation is None
+    assert result.policy.allowed is False
+
+
+def test_ninety_plus_anomalous_still_isolates(
+    broadcasts: list[object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_score(_event: TelemetryEventRead) -> DetectionScore:
+        return _score_with_units(risk_01=0.50, risk_100=94.0, prediction="anomalous")
+
+    monkeypatch.setattr(event_pipeline.detector, "score_event", fake_score)
+    result = _run(event_pipeline.process(_event(), device_id="D003"))
+    assert result.alert is not None
+    assert result.policy.allowed is True
+    assert result.policy.action == "isolate_device"
+    assert result.remediation is not None
+    assert result.device is not None
+    assert result.device.status is DeviceStatus.ISOLATED
+    types = {item.get("type") for item in broadcasts if isinstance(item, dict)}
+    assert "alert" in types
+    assert "remediation_executed" in types
+
+
+def test_eighty_plus_normal_prediction_does_not_isolate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_score(_event: TelemetryEventRead) -> DetectionScore:
+        return _score_with_units(risk_01=0.50, risk_100=94.0, prediction="normal")
+
+    monkeypatch.setattr(event_pipeline.detector, "score_event", fake_score)
+    result = _run(event_pipeline.process(_event(), device_id="D003"))
+    assert result.alert is not None
+    assert result.policy.allowed is False
+    assert result.remediation is None
