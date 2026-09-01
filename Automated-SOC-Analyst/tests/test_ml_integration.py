@@ -357,7 +357,8 @@ def test_detection_falls_back_when_ml_unavailable() -> None:
     score = _run(detector.score_event(event))
     assert score.source == "heuristic"
     assert score.ml_prediction is None
-    assert score.risk_01 >= 0.85
+    assert 0.0 <= score.risk_01 < 0.8
+    assert score.risk_01 < 0.5
 
 
 def test_normal_suspicious_event_full_pipeline(

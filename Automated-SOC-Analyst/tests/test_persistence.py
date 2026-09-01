@@ -130,7 +130,7 @@ def test_repository_crud_round_trip(repo: SocRepository) -> None:
     assert stored_token.name == "Test Token"
 
 
-def test_event_pipeline_persists_telemetry_alert_and_remediation(repo: SocRepository) -> None:
+def test_event_pipeline_persists_telemetry_alert_and_remediation(repo: SocRepository, monkeypatch: pytest.MonkeyPatch) -> None:
     pipeline = EventPipeline(
         graph_service=GraphService(),
         detector=AnomalyDetector(),
@@ -149,11 +149,28 @@ def test_event_pipeline_persists_telemetry_alert_and_remediation(repo: SocReposi
         status=EventStatus.FAILURE,
     )
 
+    async def _score(_event: TelemetryEventRead) -> DetectionScore:
+        return DetectionScore(
+            risk_01=0.90,
+            risk_100=90.0,
+            source="ml",
+            ml_prediction=MLPredictionResponse(
+                event_id=str(_event.id),
+                prediction="anomalous",
+                anomaly_score=0.90,
+                risk_score=90.0,
+                confidence=0.91,
+            ),
+        )
+
+    monkeypatch.setattr(pipeline.detector, "score_event", _score)
+
     async def _run() -> object:
         return await pipeline.process(event, device_id=event.source)
 
     result = asyncio.run(_run())
     assert result.alert is not None
+    assert result.alert.risk_score == pytest.approx(90.0)
     assert repo.get_alert(result.alert.id) is not None
     assert repo.get_telemetry_events(limit=10)[0].event_type == EventType.LATERAL_MOVEMENT
 

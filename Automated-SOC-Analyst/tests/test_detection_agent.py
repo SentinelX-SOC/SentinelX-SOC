@@ -4,6 +4,8 @@ import asyncio
 from datetime import datetime, timezone
 from uuid import uuid4
 
+import pytest
+
 from app.agents.context import AgentContext
 from app.agents.detection_agent import DetectionAgent
 from app.models.schemas import (
@@ -107,7 +109,7 @@ def test_heuristic_fallback_when_ml_unavailable() -> None:
         assert result.detection_source == "heuristic"
         assert result.ml is None
         assert result.risk_score is not None
-        assert result.risk_score > 85.0
+        assert 50.0 <= result.risk_score < 80.0
         assert result.errors == []
 
     asyncio.run(_run())
@@ -140,6 +142,46 @@ def test_detection_failure_is_recorded_and_does_not_raise() -> None:
         assert result.ml is existing_ml
 
     asyncio.run(_run())
+
+
+def test_ordinary_failed_authentication_is_not_critical() -> None:
+    event = _event(event_type=EventType.AUTH_FAILURE, status=EventStatus.FAILURE)
+    risk = AnomalyDetector(ml_service=None).predict_risk(event)
+
+    assert 0.2 <= risk < 0.8
+    assert risk < 0.5
+
+
+def test_blocked_event_remains_below_critical_band() -> None:
+    event = _event(event_type=EventType.FILE_ACCESS, status=EventStatus.BLOCKED)
+    risk = AnomalyDetector(ml_service=None).predict_risk(event)
+
+    assert 0.2 <= risk < 0.8
+
+
+def test_lateral_movement_is_high_without_stronger_evidence() -> None:
+    event = _event(event_type=EventType.LATERAL_MOVEMENT, status=EventStatus.FAILURE)
+    risk = AnomalyDetector(ml_service=None).predict_risk(event)
+
+    assert 0.5 <= risk < 0.8
+
+
+def test_privilege_escalation_requires_stronger_evidence_for_critical() -> None:
+    event = _event(event_type=EventType.PRIVILEGE_ESCALATION, status=EventStatus.FAILURE)
+    risk = AnomalyDetector(ml_service=None).predict_risk(event)
+
+    assert 0.5 <= risk < 0.8
+
+
+def test_repeated_input_is_deterministic() -> None:
+    event = _event(event_type=EventType.LATERAL_MOVEMENT, status=EventStatus.FAILURE)
+    detector = AnomalyDetector(ml_service=None)
+
+    first = detector.predict_risk(event)
+    second = detector.predict_risk(event)
+
+    assert first == second
+    assert first == pytest.approx(0.54)
 
 
 def test_missing_event_is_handled_safely() -> None:
