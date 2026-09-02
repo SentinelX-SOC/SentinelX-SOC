@@ -10,6 +10,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from starlette.websockets import WebSocketState
 
 from app.core.deps import event_pipeline, manager, ml_service
 from app.models.schemas import (
@@ -552,21 +553,66 @@ def _score_with_units(
     )
 
 
-def test_alert_gate_uses_normalized_risk_100_below_eighty(
+def test_workflow_does_not_activate_at_fifty(
     broadcasts: list[object],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def fake_score(_event: TelemetryEventRead) -> DetectionScore:
-        return _score_with_units(risk_01=0.427, risk_100=79.9, prediction="normal")
+        return _score_with_units(risk_01=0.50, risk_100=50.0, prediction="normal")
 
     monkeypatch.setattr(event_pipeline.detector, "score_event", fake_score)
     result = _run(event_pipeline.process(_event(), device_id="D003"))
+    types = {item.get("type") for item in broadcasts if isinstance(item, dict)}
     telemetry = next(item for item in broadcasts if isinstance(item, dict) and item.get("type") == "telemetry")
     assert result.alert is None
+    assert result.honeytoken is None
+    assert result.review is None
     assert result.remediation is None
     assert result.policy.allowed is False
-    assert telemetry["risk_score"] == pytest.approx(79.9)
-    assert "alert" not in {item.get("type") for item in broadcasts if isinstance(item, dict)}
+    assert telemetry["risk_score"] == pytest.approx(50.0)
+    assert "alert" not in types
+    assert "remediation_executed" not in types
+
+
+@pytest.mark.parametrize("risk_100", [50.01, 55.0, 60.0, 79.0, 80.0])
+def test_workflow_activates_above_fifty(
+    broadcasts: list[object],
+    monkeypatch: pytest.MonkeyPatch,
+    risk_100: float,
+) -> None:
+    async def fake_score(_event: TelemetryEventRead) -> DetectionScore:
+        return _score_with_units(risk_01=risk_100 / 100.0, risk_100=risk_100, prediction="normal")
+
+    monkeypatch.setattr(event_pipeline.detector, "score_event", fake_score)
+    result = _run(event_pipeline.process(_event(), device_id="D003"))
+    types = {item.get("type") for item in broadcasts if isinstance(item, dict)}
+    telemetry = next(item for item in broadcasts if isinstance(item, dict) and item.get("type") == "telemetry")
+    assert result.alert is not None
+    assert result.alert.risk_score == pytest.approx(risk_100)
+    assert telemetry["risk_score"] == pytest.approx(risk_100)
+    assert "alert" in types
+    assert "telemetry" in types
+    assert result.policy.allowed is False
+    assert result.remediation is None
+    assert "remediation_executed" not in types
+
+
+def test_moderate_risk_workflow_does_not_isolate(
+    broadcasts: list[object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_score(_event: TelemetryEventRead) -> DetectionScore:
+        return _score_with_units(risk_01=0.55, risk_100=55.0, prediction="normal")
+
+    monkeypatch.setattr(event_pipeline.detector, "score_event", fake_score)
+    result = _run(event_pipeline.process(_event(), device_id="D003"))
+    types = {item.get("type") for item in broadcasts if isinstance(item, dict)}
+    assert result.alert is not None
+    assert "alert" in types
+    assert result.policy.allowed is False
+    assert result.remediation is None
+    assert result.device is None
+    assert "remediation_executed" not in types
 
 
 def test_alert_gate_fires_at_exactly_eighty(
@@ -574,7 +620,7 @@ def test_alert_gate_fires_at_exactly_eighty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def fake_score(_event: TelemetryEventRead) -> DetectionScore:
-        return _score_with_units(risk_01=0.4276, risk_100=80.0, prediction="normal")
+        return _score_with_units(risk_01=0.80, risk_100=80.0, prediction="normal")
 
     monkeypatch.setattr(event_pipeline.detector, "score_event", fake_score)
     result = _run(event_pipeline.process(_event(), device_id="D003"))
@@ -592,16 +638,15 @@ def test_alert_and_websocket_use_risk_100_not_raw_anomaly(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def fake_score(_event: TelemetryEventRead) -> DetectionScore:
-        return _score_with_units(risk_01=0.438, risk_100=81.9, prediction="normal")
+        return _score_with_units(risk_01=0.35, risk_100=72.0, prediction="normal")
 
     monkeypatch.setattr(event_pipeline.detector, "score_event", fake_score)
     result = _run(event_pipeline.process(_event(), device_id="D003"))
     telemetry = next(item for item in broadcasts if isinstance(item, dict) and item.get("type") == "telemetry")
-    assert result.risk_score == pytest.approx(81.9)
+    assert result.risk_score == pytest.approx(72.0)
     assert result.alert is not None
-    assert result.alert.risk_score == pytest.approx(81.9)
-    assert telemetry["risk_score"] == pytest.approx(81.9)
-    assert telemetry["risk_score"] != pytest.approx(43.8)
+    assert telemetry["risk_score"] == pytest.approx(72.0)
+    assert telemetry["risk_score"] != pytest.approx(35.0)
     assert result.remediation is None
     assert result.policy.allowed is False
 
@@ -637,3 +682,93 @@ def test_eighty_plus_normal_prediction_does_not_isolate(
     assert result.alert is not None
     assert result.policy.allowed is False
     assert result.remediation is None
+
+
+def test_calibrated_normal_login_does_not_alert(
+    broadcasts: list[object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_score(_event: TelemetryEventRead) -> DetectionScore:
+        return _score_with_units(risk_01=0.35, risk_100=35.0, prediction="normal")
+
+    monkeypatch.setattr(event_pipeline.detector, "score_event", fake_score)
+    result = _run(event_pipeline.process(_event(), device_id="D003"))
+    telemetry = next(item for item in broadcasts if isinstance(item, dict) and item.get("type") == "telemetry")
+    assert result.risk_score == pytest.approx(35.0)
+    assert result.alert is None
+    assert result.policy.allowed is False
+    assert result.remediation is None
+    assert telemetry["risk_score"] == pytest.approx(35.0)
+    assert "alert" not in {item.get("type") for item in broadcasts if isinstance(item, dict)}
+
+
+@pytest.mark.parametrize(
+    ("risk_100", "expect_alert"),
+    [(0.0, False), (50.0, False), (50.01, True), (80.0, True), (90.0, True), (100.0, True)],
+)
+def test_pipeline_alert_boundaries(
+    broadcasts: list[object],
+    monkeypatch: pytest.MonkeyPatch,
+    risk_100: float,
+    expect_alert: bool,
+) -> None:
+    async def fake_score(_event: TelemetryEventRead) -> DetectionScore:
+        prediction = "anomalous" if risk_100 >= 80.0 else "normal"
+        return _score_with_units(risk_01=risk_100 / 100.0, risk_100=risk_100, prediction=prediction)
+
+    monkeypatch.setattr(event_pipeline.detector, "score_event", fake_score)
+    result = _run(event_pipeline.process(_event(), device_id="D003"))
+    telemetry = next(item for item in broadcasts if isinstance(item, dict) and item.get("type") == "telemetry")
+    assert telemetry["risk_score"] == pytest.approx(risk_100)
+    if expect_alert:
+        assert result.alert is not None
+        assert result.alert.risk_score == pytest.approx(risk_100)
+    else:
+        assert result.alert is None
+    if risk_100 >= 90.0:
+        assert result.policy.allowed is True
+        assert result.remediation is not None
+    else:
+        assert result.policy.allowed is False
+        assert result.remediation is None
+
+
+def test_moderate_risk_existing_websocket_path_delivers_alert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """risk=55 uses the existing ConnectionManager broadcast path, not a new socket."""
+
+    class _DummySocket:
+        def __init__(self) -> None:
+            self.client_state = WebSocketState.CONNECTED
+            self.messages: list[object] = []
+
+        async def send_json(self, data: object) -> None:
+            self.messages.append(data)
+
+    async def fake_score(_event: TelemetryEventRead) -> DetectionScore:
+        return _score_with_units(risk_01=0.55, risk_100=55.0, prediction="normal")
+
+    monkeypatch.setattr(event_pipeline.detector, "score_event", fake_score)
+    socket = _DummySocket()
+    previous = list(manager.active_connections)
+    manager.active_connections.clear()
+    manager.active_connections.append(socket)  # type: ignore[arg-type]
+    try:
+        result = _run(event_pipeline.process(_event(), device_id="D003"))
+        types = [item.get("type") for item in socket.messages if isinstance(item, dict)]
+        telemetry = next(item for item in socket.messages if isinstance(item, dict) and item.get("type") == "telemetry")
+        alert = next(item for item in socket.messages if isinstance(item, dict) and item.get("type") == "alert")
+        assert result.alert is not None
+        assert result.risk_score == pytest.approx(55.0)
+        assert result.remediation is None
+        assert "telemetry" in types
+        assert "alert" in types
+        assert "remediation_executed" not in types
+        assert telemetry["risk_score"] == pytest.approx(55.0)
+        assert alert["payload"]["risk_score"] == pytest.approx(55.0)
+        assert types.count("alert") == 1
+        assert types.count("telemetry") == 1
+    finally:
+        manager.active_connections[:] = previous
+        manager.cancel_pending_graph_broadcast()

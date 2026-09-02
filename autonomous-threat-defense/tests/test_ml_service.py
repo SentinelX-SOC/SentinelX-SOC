@@ -5,7 +5,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 import ml_service
-from ml_service import DemoModel, FEATURE_COLUMNS, PredictionRequest, app
+from ml_service import (
+    SOC_ALERT_RISK,
+    DemoModel,
+    FEATURE_COLUMNS,
+    PredictionRequest,
+    app,
+    calibrate_isolation_forest_risk,
+    isolation_forest_inlier_center,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -60,19 +68,31 @@ def test_fresh_inference_uses_ordered_eleven_feature_contract() -> None:
     assert 0.0 <= result.confidence <= 1.0
 
 
-def test_fresh_single_login_normalized_risk_is_above_eighty() -> None:
-    """Live adapter: raw ≈ 0.438 / threshold ≈ 0.534 → risk_100 ≈ 81.9, not 43.8."""
+def test_fresh_single_login_is_not_high_risk() -> None:
+    """Live adapter: s ≈ 0.438 < threshold ≈ 0.534 → normal, risk well below 80.
+
+    The previous conversion ``s / threshold * 100`` mapped this inlier to ~82
+    and caused the SOC dashboard to treat ordinary logins as high risk.
+    """
     model = DemoModel(ROOT)
     result = model.predict(_request())
-    expected = min(100.0, result.anomaly_score / model.threshold * 100.0)
+    buggy = result.anomaly_score / model.threshold * 100.0
+    expected = calibrate_isolation_forest_risk(
+        result.anomaly_score,
+        model.threshold,
+        offset=float(model.model.offset_),
+    )
 
     assert model.threshold == pytest.approx(0.5344558677215262)
+    assert float(model.model.offset_) == pytest.approx(-0.5)
     assert result.anomaly_score == pytest.approx(0.438, abs=0.02)
+    assert result.anomaly_score < model.threshold
+    assert result.prediction == "normal"
     assert result.risk_score == pytest.approx(expected, abs=0.05)
-    assert result.risk_score == pytest.approx(81.9, abs=1.0)
-    assert result.risk_score >= 80.0
-    assert result.anomaly_score < 0.80
-    assert result.risk_score != pytest.approx(result.anomaly_score * 100.0, abs=1.0)
+    assert result.risk_score < SOC_ALERT_RISK
+    assert result.risk_score == pytest.approx(43.8, abs=3.0)
+    assert result.risk_score != pytest.approx(buggy, abs=1.0)
+    assert buggy == pytest.approx(81.9, abs=1.0)
 
 
 def test_fresh_inference_does_not_require_lookup_parquet(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -154,3 +174,147 @@ def test_predict_reports_not_ready_without_model(monkeypatch) -> None:  # type: 
 
     assert response.status_code == 503
     assert response.json()["detail"] == "ML model is not ready"
+
+
+THRESHOLD = 0.5344558677215262
+OFFSET = -0.5
+INLIER_CENTER = 0.5
+
+
+@pytest.mark.parametrize(
+    ("score", "expected"),
+    [
+        (0.0, 0.0),
+        (INLIER_CENTER, 50.0),
+        (THRESHOLD, 80.0),
+        (1.0, 100.0),
+    ],
+)
+def test_calibration_boundaries(score: float, expected: float) -> None:
+    assert calibrate_isolation_forest_risk(score, THRESHOLD, offset=OFFSET) == pytest.approx(expected)
+
+
+def test_inlier_center_uses_model_offset_not_a_hardcoded_half() -> None:
+    assert isolation_forest_inlier_center(-0.4) == pytest.approx(0.4)
+    assert calibrate_isolation_forest_risk(0.4, 0.6, offset=-0.4) == pytest.approx(50.0)
+
+
+def test_inlier_center_maps_to_fifty() -> None:
+    assert calibrate_isolation_forest_risk(INLIER_CENTER, THRESHOLD, offset=OFFSET) == pytest.approx(50.0)
+
+
+def test_threshold_maps_to_eighty_and_is_anomalous() -> None:
+    score = THRESHOLD
+    prediction = "anomalous" if score >= THRESHOLD else "normal"
+    risk = calibrate_isolation_forest_risk(score, THRESHOLD, offset=OFFSET)
+    assert prediction == "anomalous"
+    assert risk == pytest.approx(80.0)
+
+
+def test_just_below_threshold_is_normal_and_below_eighty() -> None:
+    score = THRESHOLD - 1e-6
+    prediction = "anomalous" if score >= THRESHOLD else "normal"
+    risk = calibrate_isolation_forest_risk(score, THRESHOLD, offset=OFFSET)
+    assert prediction == "normal"
+    assert risk < SOC_ALERT_RISK
+
+
+def test_just_above_threshold_is_anomalous_and_above_eighty() -> None:
+    score = THRESHOLD + 1e-6
+    prediction = "anomalous" if score >= THRESHOLD else "normal"
+    risk = calibrate_isolation_forest_risk(score, THRESHOLD, offset=OFFSET)
+    assert prediction == "anomalous"
+    assert risk > SOC_ALERT_RISK
+
+
+@pytest.mark.parametrize("score", [0.0, INLIER_CENTER, THRESHOLD, 1.0, float("nan"), float("inf"), float("-inf")])
+def test_calibration_output_is_clamped_to_soc_scale(score: float) -> None:
+    risk = calibrate_isolation_forest_risk(score, THRESHOLD, offset=OFFSET)
+    assert 0.0 <= risk <= 100.0
+
+
+def test_equal_threshold_and_inlier_center_does_not_divide_by_zero() -> None:
+    below = calibrate_isolation_forest_risk(0.4, 0.5, offset=-0.5)
+    at = calibrate_isolation_forest_risk(0.5, 0.5, offset=-0.5)
+    above = calibrate_isolation_forest_risk(0.6, 0.5, offset=-0.5)
+    assert below < SOC_ALERT_RISK
+    assert at == pytest.approx(80.0)
+    assert above > SOC_ALERT_RISK
+
+
+def test_threshold_division_is_not_used() -> None:
+    score = 0.438
+    calibrated = calibrate_isolation_forest_risk(score, THRESHOLD, offset=OFFSET)
+    divided = score / THRESHOLD * 100.0
+    assert calibrated < SOC_ALERT_RISK
+    assert divided == pytest.approx(81.95, abs=0.2)
+    assert calibrated != pytest.approx(divided, abs=1.0)
+
+
+def test_representative_events_separate_normal_from_anomalous() -> None:
+    """Normal activity stays below the alert boundary; bursts can cross it."""
+    login = DemoModel(ROOT).predict(_request(event_id="A-login"))
+    file_like = DemoModel(ROOT).predict(
+        _request(
+            event_id="B-normal-activity",
+            source="C10",
+            destination="C11",
+            user="U10",
+            timestamp=datetime(2011, 1, 1, 0, 11, 0, tzinfo=timezone.utc),
+        )
+    )
+
+    burst_model = DemoModel(ROOT)
+    failed = None
+    last_burst = None
+    for index in range(8):
+        last_burst = burst_model.predict(
+            _request(
+                event_id=f"D-fail-{index}",
+                event_type="auth_failure",
+                status="failure",
+                source=f"CX{index}",
+                destination="C2",
+                user="UATTACK",
+                timestamp=datetime(2011, 1, 1, 0, 20, index, tzinfo=timezone.utc),
+            )
+        )
+        if index == 0:
+            failed = last_burst
+
+    extreme = DemoModel(ROOT)
+    last_extreme = None
+    for index in range(12):
+        last_extreme = extreme.predict(
+            _request(
+                event_id=f"F-malicious-{index}",
+                event_type="privilege_escalation",
+                status="failure",
+                source=f"MAL{index}",
+                destination=f"TGT{index}",
+                user="UROOT",
+                timestamp=datetime(2011, 1, 1, 0, 30, index, tzinfo=timezone.utc),
+            )
+        )
+
+    assert login.prediction == "normal"
+    assert login.risk_score < SOC_ALERT_RISK
+    assert file_like.prediction == "normal"
+    assert file_like.risk_score < SOC_ALERT_RISK
+    assert failed is not None and failed.risk_score < last_burst.risk_score
+    assert last_burst is not None and last_burst.prediction == "anomalous"
+    assert last_burst.risk_score >= SOC_ALERT_RISK
+    assert last_extreme is not None and last_extreme.prediction == "anomalous"
+    assert last_extreme.risk_score >= last_burst.risk_score
+    assert last_extreme.risk_score >= SOC_ALERT_RISK
+
+
+def test_label_matches_alert_boundary_on_live_model() -> None:
+    model = DemoModel(ROOT)
+    result = model.predict(_request())
+    if result.prediction == "normal":
+        assert result.risk_score < SOC_ALERT_RISK
+        assert result.anomaly_score < model.threshold
+    else:
+        assert result.risk_score >= SOC_ALERT_RISK
+        assert result.anomaly_score >= model.threshold

@@ -32,6 +32,11 @@ from app.services.remediation_service import RemediationService
 from app.services.review_service import HumanReviewService
 from app.services.websocket import ConnectionManager
 
+# SOC workflow / alert / WebSocket activation. Strictly greater-than: risk=50 does
+# not start the workflow. Isolation still uses PolicyService (90 + anomalous).
+WORKFLOW_RISK_THRESHOLD: float = 50.0
+# ML calibration maps the Isolation Forest decision cutoff to this SOC value.
+# Do not reuse this as the workflow gate.
 ALERT_RISK_THRESHOLD: float = 80.0
 logger = logging.getLogger(__name__)
 
@@ -86,7 +91,7 @@ class EventPipeline:
         )
 
         alert_model: Alert | None = None
-        if score.risk_100 >= ALERT_RISK_THRESHOLD:
+        if _workflow_activated(score.risk_100):
             alert_model = _build_alert(event, score.risk_100)
 
         alert_read = (
@@ -130,7 +135,7 @@ class EventPipeline:
 
         honeytoken: HoneytokenRead | None = None
         review: HumanReviewRead | None = None
-        if score.risk_100 >= ALERT_RISK_THRESHOLD:
+        if _workflow_activated(score.risk_100):
             honeytoken, review = self._open_high_risk_workflow(
                 event=event,
                 risk_100=score.risk_100,
@@ -298,6 +303,11 @@ class EventPipeline:
                     "device_id": device_id,
                 }
             )
+
+
+def _workflow_activated(risk_100: float) -> bool:
+    """Return whether the SOC workflow/alert WebSocket path should run."""
+    return float(risk_100) > WORKFLOW_RISK_THRESHOLD
 
 
 def _build_alert(event: TelemetryEventRead, risk_100: float) -> Alert:

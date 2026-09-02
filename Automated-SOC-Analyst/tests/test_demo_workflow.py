@@ -78,12 +78,12 @@ def high_risk(monkeypatch: pytest.MonkeyPatch):
     return fake_score
 
 
-def test_risk_below_eighty_does_not_open_demo_workflow(
+def test_risk_at_fifty_does_not_open_demo_workflow(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def fake_score(_event: TelemetryEventRead) -> DetectionScore:
-        return _score(risk_100=79.9, prediction="normal")
+        return _score(risk_100=50.0, prediction="normal")
 
     monkeypatch.setattr(event_pipeline.detector, "score_event", fake_score)
     result = _run(event_pipeline.process(_event(), device_id="10.0.0.25"))
@@ -93,6 +93,27 @@ def test_risk_below_eighty_does_not_open_demo_workflow(
     assert result.remediation is None
     assert honeytoken_service.list_active() == []
     assert review_service.list() == []
+
+
+def test_risk_just_above_fifty_opens_demo_workflow(
+    client: TestClient,
+    broadcasts: list[object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_score(_event: TelemetryEventRead) -> DetectionScore:
+        return _score(risk_100=50.01, prediction="normal")
+
+    monkeypatch.setattr(event_pipeline.detector, "score_event", fake_score)
+    result = _run(event_pipeline.process(_event(), device_id="10.0.0.25"))
+    types = [item.get("type") for item in broadcasts if isinstance(item, dict)]
+    assert result.alert is not None
+    assert result.honeytoken is not None
+    assert result.review is not None
+    assert result.remediation is None
+    assert result.policy.allowed is False
+    assert "alert" in types
+    assert "telemetry" in types
+    assert "remediation_executed" not in types
 
 
 def test_risk_at_least_eighty_creates_alert(

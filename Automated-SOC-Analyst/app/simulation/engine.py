@@ -12,7 +12,7 @@ from app.models.schemas import (
     TelemetryEventRead,
 )
 from app.services.detection import AnomalyDetector
-from app.services.event_pipeline import ALERT_RISK_THRESHOLD, EventPipeline
+from app.services.event_pipeline import WORKFLOW_RISK_THRESHOLD, EventPipeline
 from app.services.graph_service import GraphService
 from app.services.ingestion import load_and_normalize_lanl_data
 from app.services.websocket import ConnectionManager
@@ -127,7 +127,7 @@ class SimulationEngine:
             }
         )
 
-        if risk_100 >= ALERT_RISK_THRESHOLD:
+        if risk_100 > WORKFLOW_RISK_THRESHOLD:
             alert = _build_alert(event, risk_100)
             await self.manager.broadcast_json(
                 {

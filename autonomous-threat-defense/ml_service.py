@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 from datetime import datetime, timezone
+from math import isfinite
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -40,6 +41,15 @@ SUPPORTED_EVENT_TYPES = {
 }
 SUPPORTED_STATUSES = {"success", "failure"}
 
+# Isolation Forest s(x) is a (0, 1] anomaly score, not a probability.
+# The validation 95th-percentile threshold is the *decision boundary* and must
+# map to the SOC alert boundary (80), not to 100. Keep this aligned with
+# Automated-SOC-Analyst ``EventPipeline.ALERT_RISK_THRESHOLD``.
+SOC_ALERT_RISK = 80.0
+SOC_INLIER_RISK = 50.0
+# sklearn IsolationForest(contamination="auto") default; used only when offset_ is missing.
+_SKLEARN_DEFAULT_OFFSET = -0.5
+
 # The feature artifact uses seconds from the same LANL epoch as backend ingestion.
 LANL_EPOCH = datetime(2011, 1, 1, tzinfo=timezone.utc)
 MATCH_TOLERANCE_SECONDS = 300
@@ -64,6 +74,94 @@ class PredictionResponse(BaseModel):
     anomaly_score: float = Field(ge=0.0, le=1.0)
     risk_score: float = Field(ge=0.0, le=100.0)
     confidence: float = Field(ge=0.0, le=1.0)
+
+
+def _finite_float(value: object, default: float) -> float:
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    return number if isfinite(number) else default
+
+
+def isolation_forest_inlier_center(offset: float | None) -> float:
+    """Return ``-model.offset_``, the Isolation Forest inlier center.
+
+    sklearn's ``decision_function`` is ``score_samples - offset_``. With the
+    default contamination offset ``-0.5``, inliers sit near s(x) = 0.5. The
+    fitted model's actual ``offset_`` is used whenever it is finite.
+    """
+    parsed = _finite_float(offset, _SKLEARN_DEFAULT_OFFSET) if offset is not None else _SKLEARN_DEFAULT_OFFSET
+    center = -parsed
+    if not isfinite(center) or center <= 0.0:
+        return -_SKLEARN_DEFAULT_OFFSET
+    return center
+
+
+def calibrate_isolation_forest_risk(
+    score: float,
+    threshold: float,
+    *,
+    offset: float | None = None,
+) -> float:
+    """Map Isolation Forest s(x) onto the SOC 0–100 risk scale.
+
+    ``score`` is ``-model.score_samples(X)``, the original Isolation Forest
+    anomaly score s(x, n) from Liu, Ting, Zhou (2008):
+
+    * ``score_samples()`` — lower is more abnormal
+    * ``s = -score_samples()`` — higher is more suspicious
+    * ``threshold`` — anomaly *classification* cutoff, not 100% risk
+
+    ``s / threshold * 100`` is incorrect: it maps the 95th-percentile cutoff
+    to 100, so ordinary inliers (s ≈ 0.44 < threshold) become ~82% risk.
+
+    Using the fitted inlier center ``-offset_``:
+
+    * ``s == inlier_center`` → 50
+    * ``s < threshold`` → risk < 80
+    * ``s == threshold`` → 80
+    * ``s > threshold`` → risk > 80
+    """
+    score = min(1.0, max(0.0, _finite_float(score, 0.0)))
+    threshold = _finite_float(threshold, 0.0)
+    if threshold <= 0.0:
+        return round(min(100.0, max(0.0, score * 100.0)), 2)
+
+    inlier_center = isolation_forest_inlier_center(offset)
+
+    if score > threshold:
+        span = 1.0 - threshold
+        if span <= 1e-12:
+            return 100.0
+        t = min(1.0, (score - threshold) / span)
+        risk = SOC_ALERT_RISK + t * (100.0 - SOC_ALERT_RISK)
+        return round(min(100.0, max(SOC_ALERT_RISK + 0.01, risk)), 2)
+    if score >= threshold:
+        return SOC_ALERT_RISK
+
+    # Inliers must stay strictly below the alert boundary, including after rounding.
+    alert_cap = SOC_ALERT_RISK - 0.01
+
+    if inlier_center >= threshold:
+        # Degenerate model: no open interval between center and cutoff.
+        if threshold <= 1e-12:
+            return 0.0
+        return round(min(alert_cap, max(0.0, (score / threshold) * SOC_INLIER_RISK)), 2)
+
+    if score <= inlier_center:
+        return round(min(alert_cap, max(0.0, (score / inlier_center) * SOC_INLIER_RISK)), 2)
+
+    span = threshold - inlier_center
+    t = (score - inlier_center) / span
+    return round(
+        min(alert_cap, SOC_INLIER_RISK + t * (SOC_ALERT_RISK - SOC_INLIER_RISK)),
+        2,
+    )
+
+
+class InsufficientContextError(ValueError):
+    """The incoming telemetry cannot be represented by the auth features."""
 
 
 class DemoModel:
@@ -186,9 +284,18 @@ class DemoModel:
         if not np.isfinite(matrix.to_numpy()).all():
             raise InsufficientContextError("feature row contains non-finite values")
 
+        # score_samples: lower = more abnormal (sklearn). Negate so larger =
+        # more suspicious. This is s(x) from the Isolation Forest paper.
         raw_score = float(-self.model.score_samples(matrix)[0])
+        if not isfinite(raw_score):
+            raise InsufficientContextError("model produced a non-finite anomaly score")
         anomaly_score = max(0.0, min(1.0, raw_score))
-        risk_score = max(0.0, min(100.0, raw_score / self.threshold * 100.0))
+        offset = getattr(self.model, "offset_", None)
+        if offset is not None:
+            offset = float(offset)
+        risk_score = calibrate_isolation_forest_risk(
+            raw_score, self.threshold, offset=offset
+        )
         distance = abs(raw_score - self.threshold) / max(self.threshold, 1e-9)
         confidence = max(0.0, min(1.0, distance))
         prediction = "anomalous" if raw_score >= self.threshold else "normal"
@@ -212,10 +319,6 @@ class DemoModel:
             if distance <= MATCH_TOLERANCE_SECONDS and (best is None or distance < best[0]):
                 best = (distance, group.loc[index])
         return None if best is None else best[1]
-
-
-class InsufficientContextError(ValueError):
-    """The incoming telemetry cannot be represented by the auth features."""
 
 
 ROOT = Path(__file__).resolve().parent
