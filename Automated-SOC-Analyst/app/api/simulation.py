@@ -2,23 +2,34 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.core.deps import get_simulation_engine
+from app.auth.schemas import AuthenticatedUser
+from app.core.deps import get_current_user, get_workspace_runtime
+from app.core.workspace_manager import WorkspaceRuntime
 from app.models.schemas import SimulationStartRequest, SimulationStatusRead
-from app.simulation.engine import SimulationEngine
 
 router = APIRouter(prefix="/simulation", tags=["simulation"])
+
+
+def _status(runtime: WorkspaceRuntime, message: str = "") -> SimulationStatusRead:
+    return SimulationStatusRead(
+        state=runtime.engine.state.value,
+        message=message,
+        workspace_id=runtime.workspace_id,
+    )
 
 
 @router.post("/start", response_model=SimulationStatusRead)
 async def start_simulation(
     body: SimulationStartRequest,
-    engine: SimulationEngine = Depends(get_simulation_engine),
+    runtime: WorkspaceRuntime = Depends(get_workspace_runtime),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> SimulationStatusRead:
     try:
-        await engine.start_simulation(
+        await runtime.engine.start_simulation(
             file_path=body.file_path,
             speed_multiplier=body.speed_multiplier,
             limit=body.limit,
+            workspace_id=runtime.workspace_id,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -26,35 +37,35 @@ async def start_simulation(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return SimulationStatusRead(state=engine.state.value, message="started")
+    return _status(runtime, "started")
 
 
 @router.post("/pause", response_model=SimulationStatusRead)
 async def pause_simulation(
-    engine: SimulationEngine = Depends(get_simulation_engine),
+    runtime: WorkspaceRuntime = Depends(get_workspace_runtime),
 ) -> SimulationStatusRead:
-    engine.pause()
-    return SimulationStatusRead(state=engine.state.value, message="paused")
+    runtime.engine.pause()
+    return _status(runtime, "paused")
 
 
 @router.post("/resume", response_model=SimulationStatusRead)
 async def resume_simulation(
-    engine: SimulationEngine = Depends(get_simulation_engine),
+    runtime: WorkspaceRuntime = Depends(get_workspace_runtime),
 ) -> SimulationStatusRead:
-    engine.resume()
-    return SimulationStatusRead(state=engine.state.value, message="resumed")
+    runtime.engine.resume()
+    return _status(runtime, "resumed")
 
 
 @router.post("/stop", response_model=SimulationStatusRead)
 async def stop_simulation(
-    engine: SimulationEngine = Depends(get_simulation_engine),
+    runtime: WorkspaceRuntime = Depends(get_workspace_runtime),
 ) -> SimulationStatusRead:
-    engine.stop()
-    return SimulationStatusRead(state=engine.state.value, message="stopped")
+    runtime.engine.stop()
+    return _status(runtime, "stopped")
 
 
 @router.get("/status", response_model=SimulationStatusRead)
 async def simulation_status(
-    engine: SimulationEngine = Depends(get_simulation_engine),
+    runtime: WorkspaceRuntime = Depends(get_workspace_runtime),
 ) -> SimulationStatusRead:
-    return SimulationStatusRead(state=engine.state.value)
+    return _status(runtime)

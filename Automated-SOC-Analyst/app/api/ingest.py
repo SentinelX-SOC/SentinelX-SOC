@@ -7,8 +7,10 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import ValidationError
 
+from app.auth.schemas import AuthenticatedUser
 from app.core.config import settings
-from app.core.deps import get_event_pipeline
+from app.core.deps import get_current_user, get_workspace_runtime
+from app.core.workspace_manager import WorkspaceRuntime
 from app.models.schemas import (
     BatchEventError,
     CostEstimate,
@@ -36,7 +38,8 @@ _normalizer = MediaNormalizer()
 @router.post("", response_model=TelemetryEventBatchResult)
 async def ingest_media(
     file: UploadFile = File(...),
-    pipeline: EventPipeline = Depends(get_event_pipeline),
+    runtime: WorkspaceRuntime = Depends(get_workspace_runtime),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> TelemetryEventBatchResult:
     """Normalize a JSON / LANL CSV / LANL auth.txt upload through EventPipeline."""
     content = await file.read()
@@ -65,6 +68,8 @@ async def ingest_media(
         ) from exc
 
     started = perf_counter()
+    workspace_id = str(current_user.id)
+    pipeline = runtime.pipeline
     processed = 0
     failed = len(normalized.errors)
     alerts = 0
@@ -78,7 +83,7 @@ async def ingest_media(
         with pipeline.deferred_persist():
             for source_index, created in chunk:
                 try:
-                    result = await _process_through_pipeline(created, pipeline)
+                    result = await _process_through_pipeline(created, pipeline, workspace_id)
                 except Exception as exc:
                     failed += 1
                     if len(errors) < _MAX_REPORTED_ERRORS:
@@ -125,10 +130,13 @@ async def ingest_media(
 async def _process_through_pipeline(
     created: TelemetryEventCreate,
     pipeline: EventPipeline,
+    workspace_id: str,
 ):
     """Production path: EventPipeline only. MultiAgentService is not used."""
-    event = TelemetryEventRead.model_validate({"id": uuid4(), **created.model_dump()})
-    return await pipeline.process(event, device_id=event.source)
+    event = TelemetryEventRead.model_validate(
+        {"id": uuid4(), "workspace_id": workspace_id, **created.model_dump()}
+    )
+    return await pipeline.process(event, device_id=event.source, workspace_id=workspace_id)
 
 
 def _pipeline_error_message(exc: Exception) -> str:

@@ -2,23 +2,25 @@
 
 from fastapi import APIRouter, Depends
 
-from app.core.deps import get_graph_service
+from app.core.deps import get_workspace_runtime
+from app.core.workspace_manager import WorkspaceRuntime
 from app.models.schemas import GraphNodeRead, GraphRead
-from app.services.graph_service import GraphService
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
 
 @router.get("/", response_model=GraphRead)
 async def get_graph(
-    graph_service: GraphService = Depends(get_graph_service),
+    runtime: WorkspaceRuntime = Depends(get_workspace_runtime),
 ) -> GraphRead:
-    return graph_service.get_react_flow_graph()
+    runtime.graph_service.hydrate_from_database(runtime.workspace_id, runtime.repository)
+    return runtime.graph_service.get_graph()
 
 
 @router.get("/neighbors/{entity_id}", response_model=list[GraphNodeRead])
 async def get_neighbors(
     entity_id: str,
-    graph_service: GraphService = Depends(get_graph_service),
+    runtime: WorkspaceRuntime = Depends(get_workspace_runtime),
 ) -> list[GraphNodeRead]:
-    return graph_service.get_neighbors(entity_id)
+    runtime.graph_service.hydrate_from_database(runtime.workspace_id, runtime.repository)
+    return runtime.graph_service.get_neighbors(entity_id)

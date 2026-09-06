@@ -116,11 +116,13 @@ def _test_graph_read() -> GraphRead:
 async def test_websocket_broadcast(
     manager: ConnectionManager = Depends(get_manager),
 ) -> DevWebSocketTestRead:
-    """DEV ONLY: push sample telemetry, alert, and graph JSON to all /ws clients."""
-    await manager.broadcast_json(_TEST_TELEMETRY)
-    await manager.broadcast_json(_TEST_ALERT)
-    await manager.broadcast_json({"type": "graph", "payload": _test_graph_read()})
-    connected = len(manager.active_connections)
+    """DEV ONLY: push sample telemetry, alert, and graph JSON to /ws clients."""
+    rooms = list(manager.active_connections)
+    for workspace_id in rooms:
+        await manager.send_to_workspace(workspace_id, _TEST_TELEMETRY)
+        await manager.send_to_workspace(workspace_id, _TEST_ALERT)
+        await manager.send_to_workspace(workspace_id, {"type": "graph", "payload": _test_graph_read()})
+    connected = manager.connection_count
     return DevWebSocketTestRead(
         status="ok",
         message=(

@@ -1,9 +1,13 @@
 import { resolveWebSocketUrl } from './client';
 import type { WebSocketEvent } from '../types/api';
 
+/** Backend closes `/ws` with 1008 when `soc_session` is missing or invalid. */
+const SESSION_POLICY_VIOLATION = 1008;
+
 export class SocWebSocket {
   private socket: WebSocket | null = null;
   private onMessageHandler: ((event: WebSocketEvent) => void) | null = null;
+  private onSessionInvalidHandler: (() => void) | null = null;
   private reconnectTimer: number | null = null;
   private reconnectDelay = 1000;
   private url: string;
@@ -14,8 +18,11 @@ export class SocWebSocket {
     this.url = url;
   }
 
-  connect(onMessage: (event: WebSocketEvent) => void): void {
+  connect(onMessage: (event: WebSocketEvent) => void, onSessionInvalid?: () => void): void {
     this.onMessageHandler = onMessage;
+    if (onSessionInvalid) {
+      this.onSessionInvalidHandler = onSessionInvalid;
+    }
     this.shouldReconnect = true;
 
     if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
@@ -51,8 +58,17 @@ export class SocWebSocket {
       this.onMessageHandler?.({ type: 'telemetry', event: 'error' } as WebSocketEvent);
     };
 
-    this.socket.onclose = () => {
+    this.socket.onclose = (closeEvent: CloseEvent) => {
       this.isConnecting = false;
+
+      if (closeEvent.code === SESSION_POLICY_VIOLATION) {
+        this.stopReconnect();
+        this.socket = null;
+        this.onMessageHandler?.({ type: 'telemetry', event: 'session_invalid' } as WebSocketEvent);
+        this.onSessionInvalidHandler?.();
+        return;
+      }
+
       this.onMessageHandler?.({ type: 'telemetry', event: 'disconnected' } as WebSocketEvent);
 
       if (!this.shouldReconnect) {
@@ -73,14 +89,18 @@ export class SocWebSocket {
   }
 
   disconnect(): void {
+    this.stopReconnect();
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+    }
+  }
+
+  private stopReconnect(): void {
     this.shouldReconnect = false;
     if (this.reconnectTimer !== null) {
       window.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
-    }
-    if (this.socket) {
-      this.socket.close();
-      this.socket = null;
     }
   }
 }

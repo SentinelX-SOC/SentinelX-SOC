@@ -10,7 +10,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
-from app.core.deps import event_pipeline, honeytoken_service, remediation_service, review_service
+from app.core.deps import honeytoken_service, remediation_service, repository, review_service
+from app.core.workspace_manager import workspace_manager
 from app.models.schemas import (
     DeviceStatus,
     EventStatus,
@@ -40,6 +41,7 @@ def _event(**overrides: object) -> TelemetryEventRead:
         "user": "U001",
         "event_type": EventType.LOGIN,
         "status": EventStatus.FAILURE,
+        "workspace_id": "test-workspace",
     }
     payload.update(overrides)
     return TelemetryEventRead.model_validate(payload)
@@ -61,12 +63,17 @@ def _score(*, risk_100: float, prediction: str = "normal") -> DetectionScore:
     )
 
 
-def _login(client: TestClient) -> None:
+def _login(client: TestClient) -> str:
     response = client.post(
         f"{PREFIX}/auth/login",
         json={"email": settings.auth_dev_username, "password": settings.auth_dev_password},
     )
     assert response.status_code == 200, response.text
+    return str(response.json()["user"]["id"])
+
+
+def _user_pipeline(workspace_id: str):
+    return _run(workspace_manager.get_runtime(workspace_id, repository)).event_pipeline
 
 
 @pytest.fixture()
@@ -91,8 +98,8 @@ def test_risk_at_fifty_does_not_open_demo_workflow(
     assert result.honeytoken is None
     assert result.review is None
     assert result.remediation is None
-    assert honeytoken_service.list_active() == []
-    assert review_service.list() == []
+    assert honeytoken_service.list_active("test-workspace") == []
+    assert review_service.list(workspace_id="test-workspace") == []
 
 
 def test_risk_just_above_fifty_opens_demo_workflow(
@@ -135,8 +142,10 @@ def test_risk_at_least_eighty_starts_investigation_honeytoken_and_review(
     client: TestClient,
     high_risk,
 ) -> None:
-    event = _event()
-    result = _run(event_pipeline.process(event, device_id=event.source))
+    workspace_id = _login(client)
+    pipeline = _user_pipeline(workspace_id)
+    event = _event(workspace_id=workspace_id)
+    result = _run(pipeline.process(event, device_id=event.source))
 
     assert result.investigation is not None
     assert result.investigation.evidence
@@ -152,12 +161,11 @@ def test_risk_at_least_eighty_starts_investigation_honeytoken_and_review(
     assert result.policy.allowed is False
     assert result.remediation is None
 
-    listed = honeytoken_service.list_active()
+    listed = honeytoken_service.list_active(workspace_id)
     assert any(token.id == result.honeytoken.id for token in listed)
     stored = honeytoken_service.get(result.honeytoken.id)
     assert stored.status == HoneytokenStatus.ACTIVE
 
-    _login(client)
     reviews = client.get(f"{PREFIX}/reviews").json()
     assert any(row["id"] == str(result.review.id) for row in reviews)
 
@@ -167,8 +175,10 @@ def test_honeytoken_trigger_creates_critical_alert_and_updates_review(
     broadcasts: list[object],
     high_risk,
 ) -> None:
-    event = _event()
-    result = _run(event_pipeline.process(event, device_id=event.source))
+    workspace_id = _login(client)
+    pipeline = _user_pipeline(workspace_id)
+    event = _event(workspace_id=workspace_id)
+    result = _run(pipeline.process(event, device_id=event.source))
     token_id = result.honeytoken.id
     broadcasts.clear()
 
@@ -197,7 +207,6 @@ def test_honeytoken_trigger_creates_critical_alert_and_updates_review(
     telemetry = next(item for item in broadcasts if isinstance(item, dict) and item.get("type") == "telemetry")
     assert telemetry["risk_score"] == pytest.approx(99.0)
 
-    _login(client)
     reviews = client.get(f"{PREFIX}/reviews").json()
     matching = next(row for row in reviews if row["id"] == str(result.review.id))
     assert "Honeytoken" in matching["reason"]
@@ -216,7 +225,7 @@ def test_default_honeytoken_trigger_payload_still_defers_when_review_is_pending(
     assert triggered.device is None
     assert remediation_service.get_device(event.source) is None
     assert remediation_service.get_device("D003") is None
-    loaded = review_service.get(result.review.id)
+    loaded = review_service.get(result.review.id, workspace_id="test-workspace")
     assert loaded.status == ReviewStatus.PENDING
     assert "Honeytoken" in loaded.reason
 
@@ -227,7 +236,7 @@ def test_human_review_item_is_created_from_high_risk_detection(
 ) -> None:
     result = _run(event_pipeline.process(_event(), device_id="10.0.0.25"))
     assert result.review is not None
-    loaded = review_service.get(result.review.id)
+    loaded = review_service.get(result.review.id, workspace_id="test-workspace")
     assert loaded.status == ReviewStatus.PENDING
     assert loaded.action_type == RemediationActionType.ISOLATE_DEVICE
     assert loaded.reason
@@ -238,8 +247,10 @@ def test_review_approval_runs_existing_remediation_path(
     broadcasts: list[object],
     high_risk,
 ) -> None:
-    event = _event()
-    result = _run(event_pipeline.process(event, device_id=event.source))
+    workspace_id = _login(client)
+    pipeline = _user_pipeline(workspace_id)
+    event = _event(workspace_id=workspace_id)
+    result = _run(pipeline.process(event, device_id=event.source))
     triggered = _run(
         honeytoken_service.trigger(
             result.honeytoken.id,
@@ -255,7 +266,6 @@ def test_review_approval_runs_existing_remediation_path(
     assert remediation_service.get_device(event.source) is None
     broadcasts.clear()
 
-    _login(client)
     response = client.post(
         f"{PREFIX}/reviews/{result.review.id}/approve",
         json={"comment": "Isolate the affected device"},
@@ -281,8 +291,10 @@ def test_review_rejection_does_not_remediate(
     broadcasts: list[object],
     high_risk,
 ) -> None:
-    event = _event()
-    result = _run(event_pipeline.process(event, device_id=event.source))
+    workspace_id = _login(client)
+    pipeline = _user_pipeline(workspace_id)
+    event = _event(workspace_id=workspace_id)
+    result = _run(pipeline.process(event, device_id=event.source))
     triggered = _run(
         honeytoken_service.trigger(
             result.honeytoken.id,
@@ -296,7 +308,6 @@ def test_review_rejection_does_not_remediate(
     assert triggered.device is None
     broadcasts.clear()
 
-    _login(client)
     response = client.post(
         f"{PREFIX}/reviews/{result.review.id}/reject",
         json={"comment": "False positive"},

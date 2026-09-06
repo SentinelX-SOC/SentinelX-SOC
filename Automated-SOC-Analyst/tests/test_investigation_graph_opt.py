@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.conftest import authenticate
 from sqlmodel import select
 
 from app.core import database
@@ -47,6 +48,7 @@ def _event(**overrides: object) -> TelemetryEventRead:
         "user": "svc-recon",
         "event_type": EventType.LATERAL_MOVEMENT,
         "status": EventStatus.FAILURE,
+        "workspace_id": "test-workspace",
     }
     payload.update(overrides)
     return TelemetryEventRead.model_validate(payload)
@@ -141,6 +143,7 @@ def test_investigation_results_match_rest_neighbor_entities() -> None:
         entity="svc-recon",
         status=AlertStatus.OPEN,
         created_at=datetime.now(timezone.utc),
+        workspace_id="test-workspace",
     )
     ml = MLPredictionResponse(
         event_id=str(event.id),
@@ -269,7 +272,7 @@ def test_event_pipeline_persistence_unchanged() -> None:
         repository=repo,
     )
     result = asyncio.run(pipeline.process(event, device_id=event.source))
-    stored = repo.get_telemetry_events(limit=10)
+    stored = repo.get_telemetry_events("test-workspace", limit=10)
     assert len(stored) == 1
     assert stored[0].id == result.event.id
     with repo.session_factory() as session:
@@ -278,6 +281,7 @@ def test_event_pipeline_persistence_unchanged() -> None:
 
 
 def test_graph_rest_neighbors_still_include_positions(client: TestClient) -> None:
+    authenticate(client)
     event = {
         "timestamp": "2026-08-30T12:10:00Z",
         "source": "WS01",

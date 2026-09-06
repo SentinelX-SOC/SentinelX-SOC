@@ -64,7 +64,10 @@ class RemediationAgent(BaseAgent):
                 review_status = None
         if review_status is None and context.review_request_id and self._review_service is not None:
             try:
-                review = self._review_service.get(context.review_request_id)
+                review = self._review_service.get(
+                    context.review_request_id,
+                    workspace_id=event.workspace_id,
+                )
                 review_status = review.status
                 context.review_status = review.status
             except Exception:
@@ -88,6 +91,7 @@ class RemediationAgent(BaseAgent):
                 target,
                 reason=policy.reason,
                 alert_id=context.alert.id,
+                workspace_id=event.workspace_id if event is not None else context.alert.workspace_id,
             )
         except Exception as exc:
             logger.exception("RemediationAgent failed while executing remediation")
@@ -108,6 +112,7 @@ class RemediationAgent(BaseAgent):
                 "result": f"Simulated isolation of device {target}",
                 "created_at": context.event.timestamp,
                 "completed_at": context.event.timestamp,
+                "workspace_id": event.workspace_id if event is not None else context.alert.workspace_id,
             }
 
         context.remediation = RemediationActionRead.model_validate(action_payload)

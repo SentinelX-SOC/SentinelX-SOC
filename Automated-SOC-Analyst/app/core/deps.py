@@ -1,7 +1,12 @@
-"""Process-wide service instances shared by API routers."""
+"""FastAPI dependencies. Graph, pipeline, and simulation are per-workspace."""
+
+from fastapi import Depends
 
 from app.agents.multi_agent_service import MultiAgentService
 from app.agents.shadow_service import ShadowMultiAgentService
+from app.auth.dependencies import get_current_user
+from app.auth.schemas import AuthenticatedUser
+from app.core.workspace_manager import WorkspaceRuntime, workspace_manager
 from app.repositories.soc_repository import SocRepository
 from app.services.detection import AnomalyDetector
 from app.services.event_pipeline import EventPipeline
@@ -14,7 +19,6 @@ from app.services.review_service import HumanReviewService
 from app.services.websocket import ConnectionManager, manager
 from app.simulation.engine import SimulationEngine
 
-graph_service = GraphService()
 ml_service = MLService()
 detector = AnomalyDetector(ml_service=ml_service)
 policy_service = PolicyService()
@@ -25,33 +29,17 @@ review_service = HumanReviewService(
     remediation_service=remediation_service,
 )
 honeytoken_service = HoneytokenService(
-    graph_service=graph_service,
+    graph_service=GraphService(),
     detector=detector,
     policy_service=policy_service,
     remediation_service=remediation_service,
     manager=manager,
     repository=repository,
     review_service=review_service,
-)
-event_pipeline = EventPipeline(
-    graph_service=graph_service,
-    detector=detector,
-    policy_service=policy_service,
-    remediation_service=remediation_service,
-    manager=manager,
-    repository=repository,
-    honeytoken_service=honeytoken_service,
-    review_service=review_service,
-)
-simulation_engine = SimulationEngine(
-    graph_service,
-    detector,
-    manager,
-    pipeline=event_pipeline,
 )
 multi_agent_service = MultiAgentService(
     detector=detector,
-    graph_service=graph_service,
+    graph_service=GraphService(),
     policy_service=policy_service,
     remediation_service=remediation_service,
     allow_remediation=False,
@@ -59,14 +47,40 @@ multi_agent_service = MultiAgentService(
 )
 shadow_multi_agent_service = ShadowMultiAgentService(
     detector=detector,
-    graph_service=graph_service,
+    graph_service=GraphService(),
     policy_service=policy_service,
     remediation_service=remediation_service,
 )
 
 
-def get_graph_service() -> GraphService:
-    return graph_service
+def get_repository() -> SocRepository:
+    return repository
+
+
+async def get_workspace_runtime(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    repository: SocRepository = Depends(get_repository),
+) -> WorkspaceRuntime:
+    workspace_id = str(current_user.id)
+    return await workspace_manager.get_runtime(workspace_id, repository)
+
+
+async def get_graph_service(
+    runtime: WorkspaceRuntime = Depends(get_workspace_runtime),
+) -> GraphService:
+    return runtime.graph_service
+
+
+async def get_event_pipeline(
+    runtime: WorkspaceRuntime = Depends(get_workspace_runtime),
+) -> EventPipeline:
+    return runtime.event_pipeline
+
+
+async def get_simulation_engine(
+    runtime: WorkspaceRuntime = Depends(get_workspace_runtime),
+) -> SimulationEngine:
+    return runtime.simulation_engine
 
 
 def get_detector() -> AnomalyDetector:
@@ -75,10 +89,6 @@ def get_detector() -> AnomalyDetector:
 
 def get_manager() -> ConnectionManager:
     return manager
-
-
-def get_simulation_engine() -> SimulationEngine:
-    return simulation_engine
 
 
 def get_policy_service() -> PolicyService:
@@ -101,17 +111,9 @@ def get_ml_service() -> MLService:
     return ml_service
 
 
-def get_event_pipeline() -> EventPipeline:
-    return event_pipeline
-
-
 def get_multi_agent_service() -> MultiAgentService:
     return multi_agent_service
 
 
 def get_shadow_multi_agent_service() -> ShadowMultiAgentService:
     return shadow_multi_agent_service
-
-
-def get_repository() -> SocRepository:
-    return repository

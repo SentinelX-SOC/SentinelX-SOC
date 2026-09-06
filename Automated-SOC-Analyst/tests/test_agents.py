@@ -21,6 +21,7 @@ def _event(**overrides: object) -> TelemetryEventRead:
         "user": "alice",
         "event_type": EventType.LOGIN,
         "status": EventStatus.SUCCESS,
+        "workspace_id": "test-workspace",
     }
     payload.update(overrides)
     return TelemetryEventRead.model_validate(payload)

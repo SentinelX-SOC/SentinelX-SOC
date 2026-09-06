@@ -18,14 +18,14 @@ from app.api.simulation import router as simulation_router
 from app.api.users import router as users_router
 from app.api.websockets import router as websocket_router
 from app.core.config import settings
-from app.core.deps import graph_service, honeytoken_service, manager, ml_service, repository, simulation_engine
+from app.core.deps import honeytoken_service, manager, ml_service, repository
+from app.core.workspace_manager import workspace_manager
 from app.models.schemas import HealthRead
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    honeytoken_service.hydrate_from_database()
-    graph_service.hydrate_from_database(repository)
+    _ = (honeytoken_service, repository, workspace_manager)
     yield
 
 
@@ -68,10 +68,10 @@ async def health() -> HealthRead:
         status="ok",
         service=settings.app_name,
         version=settings.app_version,
-        simulation_state=simulation_engine.state.value,
-        websocket_connections=len(manager.active_connections),
-        graph_nodes=graph_service.graph.number_of_nodes(),
-        graph_edges=graph_service.graph.number_of_edges(),
+        simulation_state="idle",
+        websocket_connections=manager.connection_count,
+        graph_nodes=0,
+        graph_edges=0,
         ml_service_ready=bool(ml_health.get("ready")),
         ml_service_status=ml_health.get("status", "unavailable"),
         ml_service_url=str(ml_health.get("configured_url", settings.ml_service_url)),

@@ -156,10 +156,9 @@ def test_duplicate_email_is_rejected(client: TestClient) -> None:
     assert response.status_code == 409
 
 
-def test_viewer_cannot_approve_review(client: TestClient) -> None:
-    _cleanup_users()
-    _seed_user("viewer@example.com", "viewer-password", role=UserRole.VIEWER)
-    review = HumanReviewService(repository=repository).create_pending_review(
+def _pending_review(user: User, *, reason: str = "High-risk anomaly"):
+    workspace_id = str(user.id)
+    return HumanReviewService(repository=repository).create_pending_review(
         event=TelemetryEventRead(
             id=uuid4(),
             timestamp=datetime.now(timezone.utc),
@@ -168,11 +167,19 @@ def test_viewer_cannot_approve_review(client: TestClient) -> None:
             user="alice",
             event_type=EventType.LOGIN,
             status=EventStatus.SUCCESS,
+            workspace_id=workspace_id,
         ),
         action="isolate_device",
         risk_score=92.5,
-        reason="High-risk anomaly",
+        reason=reason,
+        workspace_id=workspace_id,
     )
+
+
+def test_viewer_cannot_approve_review(client: TestClient) -> None:
+    _cleanup_users()
+    viewer = _seed_user("viewer@example.com", "viewer-password", role=UserRole.VIEWER)
+    review = _pending_review(viewer)
 
     login = _login(client, "viewer@example.com", "viewer-password")
     assert login.status_code == 200
@@ -183,21 +190,8 @@ def test_viewer_cannot_approve_review(client: TestClient) -> None:
 
 def test_approved_review_records_authenticated_user(client: TestClient) -> None:
     _cleanup_users()
-    _seed_user("admin@example.com", "admin-password", role=UserRole.ADMIN)
-    review = HumanReviewService(repository=repository).create_pending_review(
-        event=TelemetryEventRead(
-            id=uuid4(),
-            timestamp=datetime.now(timezone.utc),
-            source="10.0.0.1",
-            destination="10.0.0.2",
-            user="alice",
-            event_type=EventType.LOGIN,
-            status=EventStatus.SUCCESS,
-        ),
-        action="isolate_device",
-        risk_score=92.5,
-        reason="High-risk anomaly",
-    )
+    admin = _seed_user("admin@example.com", "admin-password", role=UserRole.ADMIN)
+    review = _pending_review(admin)
 
     login = _login(client, "admin@example.com", "admin-password")
     assert login.status_code == 200
@@ -213,21 +207,8 @@ def test_approved_review_records_authenticated_user(client: TestClient) -> None:
 
 def test_review_remains_valid_after_restart(client: TestClient) -> None:
     _cleanup_users()
-    review = HumanReviewService(repository=repository).create_pending_review(
-        event=TelemetryEventRead(
-            id=uuid4(),
-            timestamp=datetime.now(timezone.utc),
-            source="10.0.0.1",
-            destination="10.0.0.2",
-            user="alice",
-            event_type=EventType.LOGIN,
-            status=EventStatus.SUCCESS,
-        ),
-        action="isolate_device",
-        risk_score=92.5,
-        reason="High-risk anomaly",
-    )
-    _seed_user("admin@example.com", "admin-password", role=UserRole.ADMIN)
+    admin = _seed_user("admin@example.com", "admin-password", role=UserRole.ADMIN)
+    review = _pending_review(admin)
 
     login = _login(client, "admin@example.com", "admin-password")
     assert login.status_code == 200

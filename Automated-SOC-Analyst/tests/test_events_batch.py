@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
+
+from tests.conftest import authenticate, patch_pipeline_process
 from sqlmodel import select
 
-from app.core.deps import event_pipeline, ml_service
+from app.core.deps import ml_service
 from app.models.schemas import (
     EventPipelineResult,
     EventSeverity,
@@ -16,6 +18,12 @@ from app.models.schemas import (
     TelemetryEvent,
     TelemetryEventRead,
 )
+
+
+@pytest.fixture(autouse=True)
+def _login(client: TestClient) -> str:
+    return authenticate(client)
+
 
 
 def _event(
@@ -58,14 +66,14 @@ async def _ml_anomalous(event: TelemetryEventRead) -> MLPredictionResponse:
 
 
 @pytest.fixture()
-def skip_persist(monkeypatch: pytest.MonkeyPatch) -> None:
+def skip_persist(monkeypatch: pytest.MonkeyPatch, event_pipeline) -> None:
     monkeypatch.setattr(event_pipeline.repository, "persist_pipeline_result", lambda **_kwargs: None)
-    monkeypatch.setattr(event_pipeline.repository, "persist_pipeline_results", lambda _items: None)
+    monkeypatch.setattr(event_pipeline.repository, "persist_pipeline_results", lambda *_items, **_kwargs: None)
 
-    async def _noop_broadcast(_payload: object) -> None:
+    async def _noop_broadcast(*_args: object, **_kwargs: object) -> None:
         return None
 
-    monkeypatch.setattr(event_pipeline.manager, "broadcast_json", _noop_broadcast)
+    monkeypatch.setattr(event_pipeline.manager, "send_to_workspace", _noop_broadcast)
 
 
 def test_empty_batch_returns_zero_counts(client: TestClient, skip_persist: None) -> None:
@@ -210,7 +218,7 @@ def test_multiple_alerts_in_a_batch(
 
 
 def test_batch_persists_telemetry_through_existing_repository(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, _login: str
 ) -> None:
     monkeypatch.setattr(ml_service, "predict", _ml_normal)
     monkeypatch.setattr("app.api.events.settings.events_batch_use_multi_agent", False)
@@ -221,7 +229,7 @@ def test_batch_persists_telemetry_through_existing_repository(
     assert response.json()["processed"] == 2
 
     repo = event_pipeline.repository
-    stored = repo.get_telemetry_events(limit=10)
+    stored = repo.get_telemetry_events(_login, limit=10)
     users = {row.user for row in stored}
     assert "BATCH-U1" in users
     assert "BATCH-U2" in users
@@ -294,7 +302,7 @@ def test_batch_prefers_multi_agent_orchestrator_path(
             policy={"allowed": False, "action": None, "reason": "fallback"},
         )
 
-    monkeypatch.setattr(event_pipeline, "process", _pipeline)
+    patch_pipeline_process(monkeypatch, _pipeline)
     response = client.post("/api/v1/events/batch", json={"events": [_event()]})
 
     assert response.status_code == 200, response.text
@@ -313,7 +321,7 @@ def test_batch_falls_back_to_pipeline_when_multi_agent_fails(
     monkeypatch.setattr("app.api.events.settings.events_batch_use_multi_agent", True)
     monkeypatch.setattr("app.api.events.get_multi_agent_service", lambda: _FakeMultiAgentService())
 
-    async def _pipeline(event: TelemetryEventRead, *, device_id: str | None = None):
+    async def _pipeline(event: TelemetryEventRead, *, device_id: str | None = None, workspace_id: str | None = None):
         return EventPipelineResult(
             event=event,
             detection_source="heuristic",
@@ -321,7 +329,7 @@ def test_batch_falls_back_to_pipeline_when_multi_agent_fails(
             policy={"allowed": False, "action": None, "reason": "fallback"},
         )
 
-    monkeypatch.setattr(event_pipeline, "process", _pipeline)
+    patch_pipeline_process(monkeypatch, _pipeline)
     response = client.post("/api/v1/events/batch", json={"events": [_event()]})
 
     assert response.status_code == 200, response.text
@@ -343,7 +351,10 @@ def test_10000_event_batch(
             confidence=0.1,
         )
 
-    monkeypatch.setattr(event_pipeline.investigation_service, "investigate", _fast_investigate)
+    monkeypatch.setattr(
+        "app.services.investigation_service.InvestigationService.investigate",
+        _fast_investigate,
+    )
     events = [
         _event(source=f"H{index % 80}", user=f"U{index % 400}")
         for index in range(10_000)
@@ -363,7 +374,7 @@ def test_pipeline_exception_in_batch_is_counted_as_failure(
 ) -> None:
     calls = {"n": 0}
 
-    async def process(event: TelemetryEventRead, *, device_id: str | None = None):
+    async def process(event: TelemetryEventRead, *, device_id: str | None = None, workspace_id: str | None = None):
         calls["n"] += 1
         if event.user == "BOOM":
             raise RuntimeError("forced pipeline failure")
@@ -375,7 +386,7 @@ def test_pipeline_exception_in_batch_is_counted_as_failure(
         )
 
     monkeypatch.setattr("app.api.events.settings.events_batch_use_multi_agent", False)
-    monkeypatch.setattr(event_pipeline, "process", process)
+    patch_pipeline_process(monkeypatch, process)
     response = client.post(
         "/api/v1/events/batch",
         json={"events": [_event(user="OK"), _event(user="BOOM"), _event(user="OK2")]},

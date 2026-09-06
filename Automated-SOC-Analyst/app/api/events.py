@@ -7,8 +7,10 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import ValidationError
 
+from app.auth.schemas import AuthenticatedUser
 from app.core.config import settings
-from app.core.deps import get_event_pipeline, get_multi_agent_service
+from app.core.deps import get_current_user, get_multi_agent_service, get_workspace_runtime
+from app.core.workspace_manager import WorkspaceRuntime
 from app.models.schemas import (
     BatchEventError,
     CostEstimate,
@@ -33,12 +35,18 @@ cost_service = CostEstimateService()
 @router.post("", response_model=EventPipelineResult)
 async def ingest_event(
     body: TelemetryEventCreate,
-    pipeline: EventPipeline = Depends(get_event_pipeline),
+    runtime: WorkspaceRuntime = Depends(get_workspace_runtime),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> EventPipelineResult:
     """Validate and process one externally supplied telemetry event."""
-    event = TelemetryEventRead.model_validate({"id": uuid4(), **body.model_dump()})
+    workspace_id = str(current_user.id)
+    event = TelemetryEventRead.model_validate(
+        {"id": uuid4(), "workspace_id": workspace_id, **body.model_dump()}
+    )
     try:
-        return await pipeline.process(event, device_id=event.source)
+        return await runtime.pipeline.process(
+            event, device_id=event.source, workspace_id=workspace_id
+        )
     except Exception as exc:  # noqa: BLE001 - avoid exposing pipeline internals
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -49,10 +57,13 @@ async def ingest_event(
 @router.post("/batch", response_model=TelemetryEventBatchResult)
 async def ingest_event_batch(
     body: TelemetryEventBatchCreate,
-    pipeline: EventPipeline = Depends(get_event_pipeline),
+    runtime: WorkspaceRuntime = Depends(get_workspace_runtime),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> TelemetryEventBatchResult:
     """Prefer the multi-agent path per event, but preserve EventPipeline as the fallback."""
     started = perf_counter()
+    workspace_id = str(current_user.id)
+    pipeline = runtime.pipeline
     raw_events = body.events
     total = len(raw_events)
     processed = 0
@@ -69,9 +80,9 @@ async def ingest_event_batch(
                 try:
                     created = TelemetryEventCreate.model_validate(raw_events[index])
                     event = TelemetryEventRead.model_validate(
-                        {"id": uuid4(), **created.model_dump()}
+                        {"id": uuid4(), "workspace_id": workspace_id, **created.model_dump()}
                     )
-                    result = await _process_batch_event(event, pipeline)
+                    result = await _process_batch_event(event, pipeline, workspace_id)
                 except Exception as exc:
                     failed += 1
                     if len(errors) < _MAX_REPORTED_ERRORS:
@@ -108,6 +119,7 @@ async def ingest_event_batch(
 async def _process_batch_event(
     event: TelemetryEventRead,
     pipeline: EventPipeline,
+    workspace_id: str,
 ) -> EventPipelineResult:
     """Try the multi-agent orchestrator first, then fall back to the existing EventPipeline."""
     if settings.events_batch_use_multi_agent:
@@ -120,7 +132,7 @@ async def _process_batch_event(
                 exc_info=True,
             )
 
-    return await pipeline.process(event, device_id=event.source)
+    return await pipeline.process(event, device_id=event.source, workspace_id=workspace_id)
 
 
 async def _run_multi_agent_event(event: TelemetryEventRead) -> EventPipelineResult:

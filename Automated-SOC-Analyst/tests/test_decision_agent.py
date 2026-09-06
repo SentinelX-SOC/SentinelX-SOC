@@ -32,6 +32,7 @@ def _event(**overrides: object) -> TelemetryEventRead:
         "user": "alice",
         "event_type": EventType.LOGIN,
         "status": EventStatus.SUCCESS,
+        "workspace_id": "test-workspace",
     }
     payload.update(overrides)
     return TelemetryEventRead.model_validate(payload)
@@ -181,6 +182,7 @@ def test_graph_threat_analysis_is_preserved() -> None:
                 entity="10.0.0.20",
                 risk_score=1.0,
             ),
+            workspace_id="test-workspace",
         )
         snapshot = GraphRead(nodes=[neighbor], edges=[])
         agent = DecisionAgent(policy_engine=_FakePolicyEngine())
@@ -272,6 +274,7 @@ def test_unrelated_context_fields_are_preserved() -> None:
             entity="alice",
             status=AlertStatus.OPEN,
             created_at=datetime.now(timezone.utc),
+            workspace_id="test-workspace",
         )
         agent = DecisionAgent(policy_engine=_FakePolicyEngine())
         result = await agent.execute(

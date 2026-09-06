@@ -81,6 +81,7 @@ class HoneytokenService:
         self,
         request: HoneytokenDeployRequest,
         *,
+        workspace_id: str,
         associated_user: str | None = None,
         associated_device: str | None = None,
         associated_event_id: str | None = None,
@@ -105,10 +106,11 @@ class HoneytokenService:
             status=HoneytokenStatus.ACTIVE,
             description=request.description,
             extra_data=extra_data,
+            workspace_id=workspace_id,
         )
         self._tokens[token_id] = token
         self._events[token_id] = []
-        self._persist_honeytoken_safely(token, insert=True)
+        self._persist_honeytoken_safely(token, insert=True, workspace_id=workspace_id)
         return HoneytokenRead.model_validate(token)
 
     def find_for_entity(
@@ -141,6 +143,8 @@ class HoneytokenService:
         event: TelemetryEventRead,
         *,
         device_id: str | None = None,
+        workspace_id: str,
+        graph_service: GraphService | None = None,
     ) -> HoneytokenRead:
         device = (device_id or event.source or "").strip()
         existing = self.find_for_entity(user=event.user, device=device)
@@ -157,12 +161,14 @@ class HoneytokenService:
                 name=name,
                 description=description,
             ),
+            workspace_id=workspace_id,
             associated_user=user,
             associated_device=device or None,
             associated_event_id=str(event.id),
         )
         try:
-            self.graph_service.record_honeytoken_deploy(
+            graph = graph_service or self.graph_service
+            graph.record_honeytoken_deploy(
                 event,
                 honeytoken_id=deployed.id,
                 honeytoken_name=deployed.name,
@@ -172,30 +178,34 @@ class HoneytokenService:
             logger.exception("Failed to attach deployed honeytoken to the graph")
         return deployed
 
-    def list_active(self) -> list[HoneytokenRead]:
+    def list_active(self, workspace_id: str) -> list[HoneytokenRead]:
+        self.hydrate_from_database(workspace_id)
         return [
             HoneytokenRead.model_validate(token)
             for token in self._tokens.values()
             if token.status is not HoneytokenStatus.INACTIVE
+            and token.workspace_id == workspace_id
         ]
 
-    def get(self, token_id: str) -> HoneytokenRead:
-        return HoneytokenRead.model_validate(self._require(token_id))
+    def get(self, token_id: str, *, workspace_id: str | None = None) -> HoneytokenRead:
+        if workspace_id:
+            self.hydrate_from_database(workspace_id)
+        return HoneytokenRead.model_validate(self._require(token_id, workspace_id=workspace_id))
 
-    def list_events(self, token_id: str) -> list[HoneytokenEventRead]:
-        self._require(token_id)
+    def list_events(self, token_id: str, *, workspace_id: str | None = None) -> list[HoneytokenEventRead]:
+        self._require(token_id, workspace_id=workspace_id)
         return list(self._events.get(token_id, []))
 
-    def deactivate(self, token_id: str) -> HoneytokenRead:
-        token = self._require(token_id)
+    def deactivate(self, token_id: str, *, workspace_id: str | None = None) -> HoneytokenRead:
+        token = self._require(token_id, workspace_id=workspace_id)
         token.status = HoneytokenStatus.INACTIVE
-        self._persist_honeytoken_safely(token)
+        self._persist_honeytoken_safely(token, workspace_id=workspace_id or token.workspace_id)
         return HoneytokenRead.model_validate(token)
 
-    def hydrate_from_database(self) -> None:
-        """Load persisted honeytokens into the in-memory registry once at startup."""
+    def hydrate_from_database(self, workspace_id: str) -> None:
+        """Load persisted workspace honeytokens into the in-memory registry."""
         try:
-            stored = self.repository.list_honeytokens()
+            stored = self.repository.list_honeytokens(workspace_id)
         except Exception:
             logger.exception("Failed to hydrate honeytokens from database; continuing with in-memory registry")
             return
@@ -210,11 +220,17 @@ class HoneytokenService:
         self,
         token_id: str,
         request: HoneytokenTriggerRequest,
+        *,
+        graph_service: GraphService | None = None,
+        workspace_id: str | None = None,
     ) -> HoneytokenTriggerResult:
-        token = self._require(token_id)
+        if workspace_id:
+            self.hydrate_from_database(workspace_id)
+        token = self._require(token_id, workspace_id=workspace_id)
         if token.status is HoneytokenStatus.INACTIVE:
             raise HoneytokenInactive(token_id)
 
+        graph = graph_service or self.graph_service
         if token.status is HoneytokenStatus.TRIGGERED and token_id in self._results:
             return await self._record_duplicate(token, request)
 
@@ -228,9 +244,9 @@ class HoneytokenService:
         token.triggered_by = request.user_id
         token.source_ip = request.source_ip
 
-        self._persist_honeytoken_safely(token)
+        self._persist_honeytoken_safely(token, workspace_id=workspace_id or token.workspace_id)
 
-        self.graph_service.record_honeytoken_trigger(
+        graph.record_honeytoken_trigger(
             event,
             honeytoken_id=token.id,
             honeytoken_name=token.name,
@@ -242,6 +258,7 @@ class HoneytokenService:
             risk_score=risk_100,
             entity=request.user_id or token.id,
             status=AlertStatus.OPEN,
+            workspace_id=token.workspace_id,
         )
         self._alerts[token.id] = alert
 
@@ -261,10 +278,16 @@ class HoneytokenService:
                 request.device_id,
                 reason=policy.reason,
                 alert_id=alert.id,
+                workspace_id=workspace_id or token.workspace_id,
             )
             remediation = RemediationActionRead.model_validate(remediation_model)
 
-        self._persist_honeytoken_safely(token, alert=alert, remediation=remediation_model)
+        self._persist_honeytoken_safely(
+            token,
+            alert=alert,
+            remediation=remediation_model,
+            workspace_id=workspace_id or token.workspace_id,
+        )
 
         event_read = HoneytokenEventRead(
             event=event,
@@ -303,6 +326,7 @@ class HoneytokenService:
             alert=alert,
             device_id=request.device_id,
             remediation=remediation,
+            graph_service=graph,
         )
 
         result = HoneytokenTriggerResult(
@@ -337,7 +361,10 @@ class HoneytokenService:
             meta.get("associated_user"),
         )
         for candidate in candidates:
-            review = self.review_service.pending_for_entity(str(candidate) if candidate else None)
+            review = self.review_service.pending_for_entity(
+                str(candidate) if candidate else None,
+                workspace_id=token.workspace_id,
+            )
             if review is not None:
                 return review
         return None
@@ -349,16 +376,18 @@ class HoneytokenService:
         insert: bool = False,
         alert: Alert | None = None,
         remediation: RemediationAction | None = None,
+        workspace_id: str | None = None,
     ) -> None:
+        scoped_id = workspace_id or honeytoken.workspace_id
         try:
             if insert:
-                self.repository.create_honeytoken(honeytoken)
+                self.repository.create_honeytoken(scoped_id, honeytoken)
             else:
-                self.repository.update_honeytoken(honeytoken)
+                self.repository.update_honeytoken(scoped_id, honeytoken)
             if alert is not None:
-                self.repository.create_alert(alert)
+                self.repository.create_alert(scoped_id, alert)
             if remediation is not None:
-                self.repository.create_remediation(remediation)
+                self.repository.create_remediation(scoped_id, remediation)
         except Exception:
             return
 
@@ -394,15 +423,20 @@ class HoneytokenService:
         alert: Alert,
         device_id: str | None,
         remediation: RemediationActionRead | None,
+        graph_service: GraphService | None = None,
     ) -> None:
         broadcast_risk = risk_01 * 100.0 if 0.0 <= risk_01 <= 1.0 else risk_100
-        await self.manager.broadcast_json(
-            {"type": "telemetry", "payload": event, "risk_score": broadcast_risk}
+        workspace_id = token.workspace_id
+        await self.manager.send_to_workspace(
+            workspace_id,
+            {"type": "telemetry", "payload": event, "risk_score": broadcast_risk},
         )
-        await self.manager.broadcast_json(
-            {"type": "alert", "payload": AlertRead.model_validate(alert)}
+        await self.manager.send_to_workspace(
+            workspace_id,
+            {"type": "alert", "payload": AlertRead.model_validate(alert)},
         )
-        await self.manager.broadcast_json(
+        await self.manager.send_to_workspace(
+            workspace_id,
             {
                 "type": "honeytoken_triggered",
                 "event": "HONEYTOKEN_TRIGGERED",
@@ -411,22 +445,27 @@ class HoneytokenService:
                 "risk_score": risk_100,
                 "honeytoken_id": token.id,
                 "device_id": device_id,
-            }
+            },
         )
-        await self.manager.schedule_graph_broadcast(self.graph_service.get_react_flow_graph)
+        graph = graph_service or self.graph_service
+        await self.manager.schedule_graph_broadcast(
+            graph.get_react_flow_graph,
+            workspace_id=workspace_id,
+        )
         if remediation is not None:
-            await self.manager.broadcast_json(
+            await self.manager.send_to_workspace(
+                workspace_id,
                 {
                     "type": "remediation_executed",
                     "event": "REMEDIATION_EXECUTED",
                     "action": remediation.action_type.value,
                     "device_id": device_id,
-                }
+                },
             )
 
-    def _require(self, token_id: str) -> Honeytoken:
+    def _require(self, token_id: str, *, workspace_id: str | None = None) -> Honeytoken:
         token = self._tokens.get(token_id)
-        if token is None:
+        if token is None or (workspace_id and token.workspace_id != workspace_id):
             raise HoneytokenNotFound(token_id)
         return token
 
@@ -465,4 +504,5 @@ def _to_telemetry_event(
         user=user,
         event_type=EventType.HONEYTOKEN_TRIGGERED,
         status=EventStatus.SUSPICIOUS,
+        workspace_id=token.workspace_id,
     )

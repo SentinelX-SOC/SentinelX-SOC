@@ -12,7 +12,8 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from starlette.websockets import WebSocketState
 
-from app.core.deps import event_pipeline, manager, ml_service
+from app.core.deps import manager, ml_service
+from tests.conftest import TEST_WORKSPACE_ID, authenticate
 from app.models.schemas import (
     DeviceStatus,
     EventStatus,
@@ -45,10 +46,12 @@ def _event(
         user="U001",
         event_type=event_type,
         status=status,
+        workspace_id="test-workspace",
     )
 
 
 def _deploy(client: TestClient) -> dict[str, object]:
+    authenticate(client)
     response = client.post(
         f"{PREFIX}/deploy",
         json={"type": "credential", "name": "Finance Backup Credential"},
@@ -396,8 +399,8 @@ def test_normal_suspicious_event_full_pipeline(
     assert result.device.device_id == "D003"
     assert result.device.status is DeviceStatus.ISOLATED
 
-    graph = client.get("/api/v1/graph/").json()
-    node_ids = {node["id"] for node in graph["nodes"]}
+    graph = graph_service.get_react_flow_graph()
+    node_ids = {node.id for node in graph.nodes}
     assert any("U001" in node_id for node_id in node_ids)
     assert any("server-03" in node_id for node_id in node_ids)
 
@@ -751,9 +754,9 @@ def test_moderate_risk_existing_websocket_path_delivers_alert(
 
     monkeypatch.setattr(event_pipeline.detector, "score_event", fake_score)
     socket = _DummySocket()
-    previous = list(manager.active_connections)
+    previous = {key: list(sockets) for key, sockets in manager.active_connections.items()}
     manager.active_connections.clear()
-    manager.active_connections.append(socket)  # type: ignore[arg-type]
+    manager.active_connections[TEST_WORKSPACE_ID].append(socket)  # type: ignore[arg-type]
     try:
         result = _run(event_pipeline.process(_event(), device_id="D003"))
         types = [item.get("type") for item in socket.messages if isinstance(item, dict)]
@@ -770,5 +773,7 @@ def test_moderate_risk_existing_websocket_path_delivers_alert(
         assert types.count("alert") == 1
         assert types.count("telemetry") == 1
     finally:
-        manager.active_connections[:] = previous
+        manager.active_connections.clear()
+        for key, sockets in previous.items():
+            manager.active_connections[key] = sockets
         manager.cancel_pending_graph_broadcast()

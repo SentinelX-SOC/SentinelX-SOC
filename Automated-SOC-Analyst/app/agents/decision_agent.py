@@ -62,6 +62,7 @@ class DecisionAgent(BaseAgent):
                 risk_score=context.risk_score,
                 reason=decision.reason,
                 alert_id=context.alert.id if context.alert is not None else None,
+                workspace_id=event.workspace_id,
             )
             context.review_required = True
             context.review_status = review.status

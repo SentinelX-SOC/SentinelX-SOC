@@ -5,9 +5,11 @@ from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
+
+from tests.conftest import authenticate, patch_pipeline_process, workspace_graph
 from sqlmodel import select
 
-from app.core.deps import event_pipeline, graph_service, ml_service
+from app.core.deps import ml_service
 from app.models.schemas import (
     EventPipelineResult,
     EventStatus,
@@ -17,6 +19,12 @@ from app.models.schemas import (
     TelemetryEvent,
     TelemetryEventRead,
 )
+
+
+@pytest.fixture(autouse=True)
+def _login(client: TestClient) -> str:
+    return authenticate(client)
+
 
 
 def _event(
@@ -70,7 +78,7 @@ async def _ml_normal(event: TelemetryEventRead) -> MLPredictionResponse:
     )
 
 
-async def _noop_process(event: TelemetryEventRead, *, device_id: str | None = None) -> EventPipelineResult:
+async def _noop_process(event: TelemetryEventRead, *, device_id: str | None = None, workspace_id: str | None = None) -> EventPipelineResult:
     return EventPipelineResult(
         event=event,
         detection_source="heuristic",
@@ -80,13 +88,13 @@ async def _noop_process(event: TelemetryEventRead, *, device_id: str | None = No
 
 
 @pytest.fixture()
-def skip_side_effects(monkeypatch: pytest.MonkeyPatch) -> None:
+def skip_side_effects(monkeypatch: pytest.MonkeyPatch, event_pipeline) -> None:
     monkeypatch.setattr(ml_service, "predict", _ml_normal)
 
-    async def _noop_broadcast(_payload: object) -> None:
+    async def _noop_broadcast(*_args: object, **_kwargs: object) -> None:
         return None
 
-    monkeypatch.setattr(event_pipeline.manager, "broadcast_json", _noop_broadcast)
+    monkeypatch.setattr(event_pipeline.manager, "send_to_workspace", _noop_broadcast)
 
 
 def _post_file(
@@ -106,11 +114,11 @@ def _post_file(
 def test_json_object_upload(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[TelemetryEventRead] = []
 
-    async def process(event: TelemetryEventRead, *, device_id: str | None = None):
+    async def process(event: TelemetryEventRead, *, device_id: str | None = None, workspace_id: str | None = None):
         captured.append(event)
         return await _noop_process(event, device_id=device_id)
 
-    monkeypatch.setattr(event_pipeline, "process", process)
+    patch_pipeline_process(monkeypatch, process)
     response = _post_file(
         client,
         name="event.json",
@@ -132,11 +140,11 @@ def test_json_object_upload(client: TestClient, monkeypatch: pytest.MonkeyPatch)
 def test_json_array_upload(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[str] = []
 
-    async def process(event: TelemetryEventRead, *, device_id: str | None = None):
+    async def process(event: TelemetryEventRead, *, device_id: str | None = None, workspace_id: str | None = None):
         captured.append(event.user)
         return await _noop_process(event, device_id=device_id)
 
-    monkeypatch.setattr(event_pipeline, "process", process)
+    patch_pipeline_process(monkeypatch, process)
     payload = [_event(user="U001"), _event(user="U002", source="WS02")]
     response = _post_file(
         client,
@@ -156,11 +164,11 @@ def test_json_array_upload(client: TestClient, monkeypatch: pytest.MonkeyPatch) 
 def test_lanl_csv_upload(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[TelemetryEventRead] = []
 
-    async def process(event: TelemetryEventRead, *, device_id: str | None = None):
+    async def process(event: TelemetryEventRead, *, device_id: str | None = None, workspace_id: str | None = None):
         captured.append(event)
         return await _noop_process(event, device_id=device_id)
 
-    monkeypatch.setattr(event_pipeline, "process", process)
+    patch_pipeline_process(monkeypatch, process)
     response = _post_file(
         client,
         name="auth.csv",
@@ -179,11 +187,11 @@ def test_lanl_csv_upload(client: TestClient, monkeypatch: pytest.MonkeyPatch) ->
 def test_lanl_auth_txt_upload(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[TelemetryEventRead] = []
 
-    async def process(event: TelemetryEventRead, *, device_id: str | None = None):
+    async def process(event: TelemetryEventRead, *, device_id: str | None = None, workspace_id: str | None = None):
         captured.append(event)
         return await _noop_process(event, device_id=device_id)
 
-    monkeypatch.setattr(event_pipeline, "process", process)
+    patch_pipeline_process(monkeypatch, process)
     response = _post_file(
         client,
         name="auth.txt",
@@ -209,7 +217,7 @@ def test_unsupported_image_returns_415(client: TestClient, monkeypatch: pytest.M
         called = True
         raise AssertionError("pipeline must not run for images")
 
-    monkeypatch.setattr(event_pipeline, "process", process)
+    patch_pipeline_process(monkeypatch, process)
     png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
     response = _post_file(client, name="screenshot.png", content=png, content_type="image/png")
 
@@ -226,7 +234,7 @@ def test_unsupported_media_returns_415(client: TestClient, monkeypatch: pytest.M
         called = True
         raise AssertionError("pipeline must not run for unsupported media")
 
-    monkeypatch.setattr(event_pipeline, "process", process)
+    patch_pipeline_process(monkeypatch, process)
     response = _post_file(
         client,
         name="notes.pdf",
@@ -246,7 +254,7 @@ def test_malformed_json_returns_400(client: TestClient, monkeypatch: pytest.Monk
         called = True
         raise AssertionError("pipeline must not run for malformed JSON")
 
-    monkeypatch.setattr(event_pipeline, "process", process)
+    patch_pipeline_process(monkeypatch, process)
     response = _post_file(
         client,
         name="bad.json",
@@ -264,11 +272,11 @@ def test_malformed_csv_row_does_not_stop_ingest(
 ) -> None:
     captured: list[str] = []
 
-    async def process(event: TelemetryEventRead, *, device_id: str | None = None):
+    async def process(event: TelemetryEventRead, *, device_id: str | None = None, workspace_id: str | None = None):
         captured.append(event.user)
         return await _noop_process(event, device_id=device_id)
 
-    monkeypatch.setattr(event_pipeline, "process", process)
+    patch_pipeline_process(monkeypatch, process)
     response = _post_file(
         client,
         name="auth.csv",
@@ -290,11 +298,11 @@ def test_mixed_valid_invalid_json_records(
 ) -> None:
     captured: list[str] = []
 
-    async def process(event: TelemetryEventRead, *, device_id: str | None = None):
+    async def process(event: TelemetryEventRead, *, device_id: str | None = None, workspace_id: str | None = None):
         captured.append(event.user)
         return await _noop_process(event, device_id=device_id)
 
-    monkeypatch.setattr(event_pipeline, "process", process)
+    patch_pipeline_process(monkeypatch, process)
     payload = [_event(user="GOOD"), {"source": "WS01"}, _event(user="ALSO-GOOD", source="WS03")]
     response = _post_file(
         client,
@@ -317,12 +325,12 @@ def test_event_pipeline_receives_normalized_events(
 ) -> None:
     captured: dict[str, object] = {}
 
-    async def process(event: TelemetryEventRead, *, device_id: str | None = None):
+    async def process(event: TelemetryEventRead, *, device_id: str | None = None, workspace_id: str | None = None):
         captured["event"] = event
         captured["device_id"] = device_id
         return await _noop_process(event, device_id=device_id)
 
-    monkeypatch.setattr(event_pipeline, "process", process)
+    patch_pipeline_process(monkeypatch, process)
     response = _post_file(
         client,
         name="event.json",
@@ -341,7 +349,7 @@ def test_event_pipeline_receives_normalized_events(
 def test_ingest_does_not_call_multi_agent_service(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(event_pipeline, "process", _noop_process)
+    patch_pipeline_process(monkeypatch, _noop_process)
 
     def _boom(*_args: object, **_kwargs: object):
         raise AssertionError("MultiAgentService must not be used for mixed-media ingest")
@@ -358,7 +366,7 @@ def test_ingest_does_not_call_multi_agent_service(
 
 
 def test_persistence_still_occurs_through_event_pipeline(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch, skip_side_effects: None
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, skip_side_effects: None, _login: str
 ) -> None:
     response = _post_file(
         client,
@@ -369,7 +377,7 @@ def test_persistence_still_occurs_through_event_pipeline(
     assert response.status_code == 200, response.text
     assert response.json()["processed"] == 1
 
-    stored = event_pipeline.repository.get_telemetry_events(limit=10)
+    stored = event_pipeline.repository.get_telemetry_events(_login, limit=10)
     users = {row.user for row in stored}
     assert "INGEST-U1" in users
     with event_pipeline.repository.session_factory() as session:
@@ -377,13 +385,12 @@ def test_persistence_still_occurs_through_event_pipeline(
 
 
 def test_graph_behavior_matches_single_event_endpoint(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch, skip_side_effects: None
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, skip_side_effects: None, _login: str
 ) -> None:
     monkeypatch.setattr(event_pipeline.repository, "persist_pipeline_result", lambda **_kwargs: None)
-    monkeypatch.setattr(event_pipeline.repository, "persist_pipeline_results", lambda _items: None)
+    monkeypatch.setattr(event_pipeline.repository, "persist_pipeline_results", lambda *_items, **_kwargs: None)
     payload = _event(user="GRAPH-U", source="GRAPH-SRC", destination="GRAPH-DST")
 
-    graph_service.graph.clear()
     ingest = _post_file(
         client,
         name="event.json",
@@ -391,21 +398,23 @@ def test_graph_behavior_matches_single_event_endpoint(
         content_type="application/json",
     )
     assert ingest.status_code == 200, ingest.text
-    ingest_nodes = graph_service.graph.number_of_nodes()
-    ingest_edges = graph_service.graph.number_of_edges()
+    gs = workspace_graph(_login)
+    ingest_nodes = gs.graph.number_of_nodes()
+    ingest_edges = gs.graph.number_of_edges()
     assert ingest_nodes > 0
 
-    graph_service.graph.clear()
+    gs.graph.clear()
+    gs._applied_event_ids.clear()
     direct = client.post("/api/v1/events", json=payload)
     assert direct.status_code == 200, direct.text
-    assert graph_service.graph.number_of_nodes() == ingest_nodes
-    assert graph_service.graph.number_of_edges() == ingest_edges
+    assert gs.graph.number_of_nodes() == ingest_nodes
+    assert gs.graph.number_of_edges() == ingest_edges
 
 
 def test_existing_events_endpoint_still_works(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(event_pipeline, "process", _noop_process)
+    patch_pipeline_process(monkeypatch, _noop_process)
     response = client.post("/api/v1/events", json=_event())
     assert response.status_code == 200, response.text
     assert response.json()["event"]["source"] == "WS01"
@@ -416,7 +425,7 @@ def test_existing_events_batch_endpoint_still_works(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr("app.api.events.settings.events_batch_use_multi_agent", False)
-    monkeypatch.setattr(event_pipeline, "process", _noop_process)
+    patch_pipeline_process(monkeypatch, _noop_process)
     response = client.post("/api/v1/events/batch", json={"events": [_event(), _event(user="U002")]})
     assert response.status_code == 200, response.text
     body = response.json()
@@ -434,7 +443,7 @@ def test_file_size_limit_returns_413(client: TestClient, monkeypatch: pytest.Mon
         called = True
         raise AssertionError("pipeline must not run for oversized files")
 
-    monkeypatch.setattr(event_pipeline, "process", process)
+    patch_pipeline_process(monkeypatch, process)
     response = _post_file(
         client,
         name="event.json",
@@ -453,11 +462,11 @@ def test_event_count_limit_reports_overflow(
 
     captured: list[str] = []
 
-    async def process(event: TelemetryEventRead, *, device_id: str | None = None):
+    async def process(event: TelemetryEventRead, *, device_id: str | None = None, workspace_id: str | None = None):
         captured.append(event.user)
         return await _noop_process(event, device_id=device_id)
 
-    monkeypatch.setattr(event_pipeline, "process", process)
+    patch_pipeline_process(monkeypatch, process)
     payload = [_event(user=f"U{index}") for index in range(4)]
     response = _post_file(
         client,
@@ -478,7 +487,7 @@ def test_event_count_limit_reports_overflow(
 def test_json_extra_fields_are_not_widened(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(event_pipeline, "process", _noop_process)
+    patch_pipeline_process(monkeypatch, _noop_process)
     payload = {**_event(), "screenshot": "not-allowed"}
     response = _post_file(
         client,

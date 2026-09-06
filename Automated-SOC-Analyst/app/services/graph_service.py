@@ -90,18 +90,24 @@ class GraphService:
     def __init__(self) -> None:
         self.graph: nx.DiGraph = nx.DiGraph()
         self._applied_event_ids: set[UUID] = set()
+        self.workspace_id: str = ""
 
-    def hydrate_from_database(self, repository: SocRepository | None = None) -> None:
-        """Rebuild the in-memory graph from persisted telemetry at startup.
+    def hydrate_from_database(
+        self,
+        workspace_id: str,
+        repository: SocRepository | None = None,
+    ) -> None:
+        """Rebuild the in-memory graph from persisted workspace telemetry.
 
         Replays rows through ``add_telemetry_event`` so node/edge IDs and
         payloads stay identical to live EventPipeline graph updates. Does not
         broadcast WebSocket events. Failures are logged and swallowed so the
         backend can still start.
         """
+        self.workspace_id = workspace_id
         repo = repository or SocRepository()
         try:
-            stored = repo.list_telemetry_events_chronological()
+            stored = repo.list_telemetry_events_chronological(workspace_id)
         except Exception:
             logger.exception(
                 "Failed to hydrate graph from persisted telemetry; continuing with in-memory graph"
@@ -132,6 +138,9 @@ class GraphService:
 
     def add_telemetry_event(self, event: TelemetryEventRead) -> None:
         """Add User / Computer / Server nodes and AUTHENTICATED_TO / CONNECTED_TO edges."""
+        if event.id in self._applied_event_ids:
+            return
+        self._applied_event_ids.add(event.id)
         user_id = self._add_user_node(event)
         source_id = self._add_host_node(event.source, event, is_destination=False)
         dest_id = self._add_host_node(event.destination, event, is_destination=True)
@@ -160,6 +169,10 @@ class GraphService:
                 GraphEdgeType.CONNECTED_TO,
                 event,
             )
+
+    def get_graph(self) -> GraphRead:
+        """React Flow snapshot for the current workspace graph."""
+        return self.get_react_flow_graph()
 
     def get_react_flow_graph(self) -> GraphRead:
         """Convert the NetworkX graph into a React Flow `GraphRead` payload."""
@@ -466,6 +479,7 @@ class GraphService:
                         "last_seen": data.get("last_seen"),
                     },
                 ),
+                "workspace_id": self.workspace_id,
             }
         )
 
@@ -497,6 +511,7 @@ class GraphService:
                         "types": data.get("types", [edge_type.value]),
                     },
                 ),
+                "workspace_id": self.workspace_id,
             }
         )
 

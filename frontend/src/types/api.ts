@@ -65,6 +65,7 @@ export interface TelemetryEventRead {
   user: string;
   event_type: EventType;
   status: EventStatus;
+  workspace_id: string;
 }
 
 export interface TelemetryEventCreate {
@@ -82,6 +83,7 @@ export interface AlertRead {
   entity: string;
   status: AlertStatus;
   created_at: string;
+  workspace_id: string;
 }
 
 export interface Position {
@@ -102,6 +104,7 @@ export interface GraphNodeRead {
   type?: string | null;
   position: Position;
   data: GraphNodeData;
+  workspace_id: string;
 }
 
 export interface GraphEdgeData {
@@ -118,6 +121,7 @@ export interface GraphEdgeRead {
   label?: string | null;
   animated: boolean;
   data?: GraphEdgeData | null;
+  workspace_id: string;
 }
 
 export interface GraphRead {
@@ -158,6 +162,7 @@ export interface RemediationActionRead {
   result: string | null;
   created_at: string;
   completed_at: string | null;
+  workspace_id: string;
 }
 
 export interface DeviceStateRead {
@@ -216,6 +221,7 @@ export interface HumanReviewRead {
   reviewed_by: string | null;
   review_comment: string | null;
   reviewed_at: string | null;
+  workspace_id: string;
 }
 
 export interface HealthRead {
@@ -246,6 +252,7 @@ export interface HoneytokenRead {
   triggered_by: string | null;
   source_ip: string | null;
   metadata: Record<string, unknown>;
+  workspace_id: string;
 }
 
 export interface HoneytokenEventRead {
@@ -276,13 +283,14 @@ export interface HoneytokenTriggerResult {
 export interface SimulationStatusRead {
   state: SimulationState;
   message: string;
+  workspace_id: string;
 }
 
 export interface WebSocketEvent {
   type: 'telemetry' | 'alert' | 'graph' | 'honeytoken_triggered' | 'remediation_executed';
   payload?: TelemetryEventRead | AlertRead | GraphRead | unknown;
   risk_score?: number;
-  event?: string;
+  event?: 'connected' | 'disconnected' | 'error' | 'session_invalid' | string;
   action?: string;
   device_id?: string;
   alert_id?: string;

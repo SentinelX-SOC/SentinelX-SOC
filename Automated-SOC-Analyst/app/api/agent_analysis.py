@@ -5,6 +5,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.agents.shadow_service import ShadowMultiAgentService
+from app.auth.dependencies import get_current_user
+from app.auth.schemas import AuthenticatedUser
 from app.core.config import settings
 from app.core.deps import get_shadow_multi_agent_service
 from app.models.schemas import AgentAnalysisRead, CostEstimate, TelemetryEventCreate
@@ -19,9 +21,10 @@ cost_service = CostEstimateService()
 async def analyze_event(
     body: TelemetryEventCreate,
     shadow: ShadowMultiAgentService = Depends(get_shadow_multi_agent_service),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> AgentAnalysisRead:
     """Run shadow multi-agent analysis with no persist, graph write, or remediation."""
-    event = shadow.event_from_create(body)
+    event = shadow.event_from_create(body, workspace_id=user.id or user.username)
     try:
         context = await shadow.run_shadow_analysis(event)
     except Exception as exc:  # noqa: BLE001 - avoid exposing internals

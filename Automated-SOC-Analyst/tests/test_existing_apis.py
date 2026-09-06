@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from app.core.deps import ml_service
+from tests.conftest import authenticate
 
 
 def test_health_endpoint(client: TestClient) -> None:
@@ -55,6 +56,7 @@ def test_health_reports_ml_unavailable(
 
 
 def test_graph_endpoint_still_works(client: TestClient) -> None:
+    authenticate(client)
     response = client.get("/api/v1/graph/")
     assert response.status_code == 200
     body = response.json()
@@ -63,6 +65,8 @@ def test_graph_endpoint_still_works(client: TestClient) -> None:
 
 
 def test_simulation_status_still_works(client: TestClient) -> None:
+    authenticate(client)
     response = client.get("/api/v1/simulation/status")
     assert response.status_code == 200
     assert "state" in response.json()
+    assert "workspace_id" in response.json()

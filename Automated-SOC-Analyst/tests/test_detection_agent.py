@@ -29,6 +29,7 @@ def _event(**overrides: object) -> TelemetryEventRead:
         "user": "alice",
         "event_type": EventType.LOGIN,
         "status": EventStatus.SUCCESS,
+        "workspace_id": "test-workspace",
     }
     payload.update(overrides)
     return TelemetryEventRead.model_validate(payload)
@@ -207,6 +208,7 @@ def test_existing_context_fields_are_preserved() -> None:
             entity="alice",
             status=AlertStatus.OPEN,
             created_at=datetime.now(timezone.utc),
+            workspace_id="test-workspace",
         )
         policy = PolicyDecisionRead(
             allowed=False,

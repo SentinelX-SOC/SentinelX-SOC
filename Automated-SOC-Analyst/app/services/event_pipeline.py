@@ -47,37 +47,58 @@ class EventPipeline:
     def __init__(
         self,
         graph_service: GraphService,
-        detector: AnomalyDetector,
-        policy_service: PolicyService,
-        remediation_service: RemediationService | None,
-        manager: ConnectionManager,
+        detector: AnomalyDetector | None = None,
+        policy_service: PolicyService | None = None,
+        remediation_service: RemediationService | None = None,
+        manager: ConnectionManager | None = None,
         investigation_service: InvestigationService | None = None,
         repository: SocRepository | None = None,
         honeytoken_service: HoneytokenService | None = None,
         review_service: HumanReviewService | None = None,
+        workspace_id: str = "",
     ) -> None:
+        self.workspace_id = (workspace_id or "").strip()
         self.graph_service = graph_service
+        if detector is None or policy_service is None or manager is None:
+            detector, policy_service, manager, honeytoken_service, review_service = (
+                _shared_pipeline_services(
+                    detector,
+                    policy_service,
+                    manager,
+                    honeytoken_service,
+                    review_service,
+                )
+            )
         self.detector = detector
-        self.policy_service = policy_service
+        self.policy_service = policy_service or PolicyService()
         self.remediation_service = remediation_service or RemediationService()
-        self.manager = manager
+        self.manager = manager or ConnectionManager()
         self.investigation_service = investigation_service or InvestigationService()
         self.repository = repository or SocRepository()
         self.honeytoken_service = honeytoken_service
         self.review_service = review_service
         self._deferred_persist: list[PipelinePersistItem] | None = None
+        if self.workspace_id:
+            self.graph_service.workspace_id = self.workspace_id
 
     async def process(
         self,
         event: TelemetryEventRead,
         *,
         device_id: str | None = None,
+        workspace_id: str | None = None,
     ) -> EventPipelineResult:
         """Run ML-enriched detection then backend graph/policy/remediation.
 
         ML outages fall back to deterministic detection. The ML service is
         never asked to isolate, block, or otherwise act.
         """
+        workspace_id = (self.workspace_id or workspace_id or event.workspace_id or "").strip()
+        if not workspace_id:
+            raise ValueError("workspace_id is required")
+        self.workspace_id = workspace_id
+        self.graph_service.workspace_id = workspace_id
+        event = event.model_copy(update={"workspace_id": workspace_id})
         score = await self.detector.score_event(event)
         self.graph_service.add_telemetry_event(event)
 
@@ -124,6 +145,7 @@ class EventPipeline:
                 target,
                 reason=policy.reason,
                 alert_id=alert_model.id,
+                workspace_id=workspace_id,
             )
             remediation = RemediationActionRead.model_validate(remediation_model)
 
@@ -182,7 +204,12 @@ class EventPipeline:
 
         if self.honeytoken_service is not None:
             try:
-                honeytoken = self.honeytoken_service.deploy_for_event(event, device_id=target or None)
+                honeytoken = self.honeytoken_service.deploy_for_event(
+                    event,
+                    device_id=target or None,
+                    workspace_id=event.workspace_id,
+                    graph_service=self.graph_service,
+                )
             except Exception:
                 logger.exception("Failed to auto-deploy honeytoken for high-risk event")
                 honeytoken = None
@@ -190,13 +217,14 @@ class EventPipeline:
         if self.review_service is not None:
             try:
                 evidence = _review_reason(event, risk_100, investigation, honeytoken)
-                existing = self.review_service.pending_for_entity(target)
+                existing = self.review_service.pending_for_entity(target, workspace_id=event.workspace_id)
                 if existing is not None:
                     review = self.review_service.refresh_pending_review(
                         existing,
                         reason=evidence,
                         risk_score=risk_100,
                         alert_id=alert.id if alert is not None else None,
+                        workspace_id=event.workspace_id,
                     )
                 else:
                     review = self.review_service.create_pending_review(
@@ -206,6 +234,7 @@ class EventPipeline:
                         reason=evidence,
                         alert_id=alert.id if alert is not None else None,
                         target_entity=target or None,
+                        workspace_id=event.workspace_id,
                     )
             except Exception:
                 logger.exception("Failed to create human review for high-risk event")
@@ -235,13 +264,14 @@ class EventPipeline:
         if not records:
             return
         try:
-            self.repository.persist_pipeline_results(records)
+            self.repository.persist_pipeline_results(self.workspace_id, records)
             return
         except Exception:
             logger.exception("Batch persist failed; retrying per event so successful rows are not lost")
         for item in records:
             try:
                 self.repository.persist_pipeline_result(
+                    workspace_id=self.workspace_id,
                     event=item.event,
                     alert=item.alert,
                     remediation=item.remediation,
@@ -262,6 +292,7 @@ class EventPipeline:
             return
         try:
             self.repository.persist_pipeline_result(
+                workspace_id=self.workspace_id,
                 event=event,
                 alert=alert,
                 remediation=remediation,
@@ -279,30 +310,67 @@ class EventPipeline:
         device_id: str | None,
         remediation: RemediationActionRead | None,
     ) -> None:
-        await self.manager.broadcast_json(
+        await self.manager.send_to_workspace(
+            self.workspace_id,
             {
                 "type": "telemetry",
                 "payload": event,
                 "risk_score": risk_100,
-            }
+            },
         )
         if alert is not None:
-            await self.manager.broadcast_json(
+            await self.manager.send_to_workspace(
+                self.workspace_id,
                 {
                     "type": "alert",
                     "payload": alert,
-                }
+                },
             )
-        await self.manager.schedule_graph_broadcast(self.graph_service.get_react_flow_graph)
+        await self.manager.schedule_graph_broadcast(
+            self.graph_service.get_react_flow_graph,
+            workspace_id=self.workspace_id,
+        )
         if remediation is not None:
-            await self.manager.broadcast_json(
+            await self.manager.send_to_workspace(
+                self.workspace_id,
                 {
                     "type": "remediation_executed",
                     "event": "REMEDIATION_EXECUTED",
                     "action": remediation.action_type.value,
                     "device_id": device_id,
-                }
+                },
             )
+
+
+def _shared_pipeline_services(
+    detector: AnomalyDetector | None,
+    policy_service: PolicyService | None,
+    manager: ConnectionManager | None,
+    honeytoken_service: HoneytokenService | None,
+    review_service: HumanReviewService | None,
+) -> tuple[
+    AnomalyDetector,
+    PolicyService,
+    ConnectionManager,
+    HoneytokenService | None,
+    HumanReviewService | None,
+]:
+    """Use process-wide detector/policy/manager when a workspace runtime omits them."""
+    from app.core.deps import (
+        detector as shared_detector,
+        honeytoken_service as shared_honeytoken,
+        manager as shared_manager,
+        policy_service as shared_policy,
+        review_service as shared_review,
+    )
+
+    return (
+        detector or shared_detector,
+        policy_service or shared_policy,
+        manager or shared_manager,
+        honeytoken_service if honeytoken_service is not None else shared_honeytoken,
+        review_service if review_service is not None else shared_review,
+    )
 
 
 def _workflow_activated(risk_100: float) -> bool:
@@ -316,6 +384,7 @@ def _build_alert(event: TelemetryEventRead, risk_100: float) -> Alert:
         risk_score=min(100.0, round(risk_100, 2)),
         entity=entity,
         status=AlertStatus.OPEN,
+        workspace_id=event.workspace_id,
     )
 
 

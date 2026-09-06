@@ -41,6 +41,7 @@ class _DisabledRemediationService:
         *,
         reason: str,
         alert_id: UUID,
+        workspace_id: str = "",
     ) -> tuple[RemediationAction, DeviceStateRead]:
         raise RuntimeError("multi-agent dry-run: remediation disabled")
 

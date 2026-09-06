@@ -5,11 +5,13 @@ from fastapi.testclient import TestClient
 
 from app.core.deps import manager
 from app.models.schemas import DeviceStatus, EventType, RemediationActionType
+from tests.conftest import authenticate
 
 PREFIX = "/api/v1/honeytokens"
 
 
 def _deploy(client: TestClient, token_type: str = "credential") -> dict[str, object]:
+    authenticate(client)
     response = client.post(
         f"{PREFIX}/deploy",
         json={"type": token_type, "name": "Finance Backup Credential"},
@@ -43,6 +45,7 @@ def test_get_honeytoken(client: TestClient) -> None:
 
 
 def test_get_unknown_honeytoken(client: TestClient) -> None:
+    authenticate(client)
     response = client.get(f"{PREFIX}/HT-MISSING")
     assert response.status_code == 404
 

@@ -5,9 +5,17 @@ from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core.deps import detector, event_pipeline, graph_service, ml_service, repository
+from tests.conftest import authenticate, patch_pipeline_process
+
+from app.core.deps import detector, ml_service, repository
 from app.models.schemas import EventStatus, EventType, MLPredictionResponse, TelemetryEventRead
 from app.services.detection import DetectionScore
+
+
+@pytest.fixture(autouse=True)
+def _login(client: TestClient) -> str:
+    return authenticate(client)
+
 
 
 def _payload(**overrides: object) -> dict[str, object]:
@@ -119,7 +127,7 @@ def test_heuristic_fallback_when_ml_unavailable(
 
 
 def test_graph_and_database_remain_unchanged(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, _login: str
 ) -> None:
     async def unavailable(_event: TelemetryEventRead) -> None:
         return None
@@ -127,14 +135,14 @@ def test_graph_and_database_remain_unchanged(
     monkeypatch.setattr(ml_service, "predict", unavailable)
     nodes_before = graph_service.graph.number_of_nodes()
     edges_before = graph_service.graph.number_of_edges()
-    rows_before = len(repository.list_telemetry_events_chronological())
+    rows_before = len(repository.list_telemetry_events_chronological(_login))
 
     response = client.post("/api/v1/agent-analysis", json=_payload())
     assert response.status_code == 200, response.text
 
     assert graph_service.graph.number_of_nodes() == nodes_before
     assert graph_service.graph.number_of_edges() == edges_before
-    assert len(repository.list_telemetry_events_chronological()) == rows_before
+    assert len(repository.list_telemetry_events_chronological(_login)) == rows_before
 
 
 def test_no_websocket_broadcast(
@@ -155,7 +163,7 @@ def test_existing_events_endpoint_still_uses_pipeline(
 ) -> None:
     calls: list[str] = []
 
-    async def process(event: TelemetryEventRead, *, device_id: str | None = None):
+    async def process(event: TelemetryEventRead, *, device_id: str | None = None, workspace_id: str | None = None):
         calls.append("pipeline")
         return {
             "event": event,
@@ -164,7 +172,7 @@ def test_existing_events_endpoint_still_uses_pipeline(
             "policy": {"allowed": False, "action": None, "reason": "test"},
         }
 
-    monkeypatch.setattr(event_pipeline, "process", process)
+    patch_pipeline_process(monkeypatch, process)
     events_response = client.post("/api/v1/events", json=_payload())
     analysis_response = client.post("/api/v1/agent-analysis", json=_payload())
 
@@ -202,12 +210,12 @@ def test_agent_failure_is_returned_safely(
 
 
 def test_controlled_live_agent_analysis_has_no_side_effects(
-    client: TestClient, broadcasts: list[object]
+    client: TestClient, broadcasts: list[object], _login: str
 ) -> None:
     """One request through the real app stack. ML is used when the detector can reach it."""
     nodes_before = graph_service.graph.number_of_nodes()
     edges_before = graph_service.graph.number_of_edges()
-    rows_before = len(repository.list_telemetry_events_chronological())
+    rows_before = len(repository.list_telemetry_events_chronological(_login))
     broadcast_before = len(broadcasts)
 
     response = client.post(
@@ -238,5 +246,5 @@ def test_controlled_live_agent_analysis_has_no_side_effects(
     assert body["remediation_dry_run"] is True
     assert graph_service.graph.number_of_nodes() == nodes_before
     assert graph_service.graph.number_of_edges() == edges_before
-    assert len(repository.list_telemetry_events_chronological()) == rows_before
+    assert len(repository.list_telemetry_events_chronological(_login)) == rows_before
     assert len(broadcasts) == broadcast_before

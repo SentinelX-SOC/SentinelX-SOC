@@ -156,6 +156,7 @@ class TelemetryEvent(SQLModel, table=True):
     user: str = SQLField(index=True, max_length=255)
     event_type: EventType = SQLField(index=True)
     status: EventStatus = SQLField(index=True)
+    workspace_id: str = SQLField(index=True, max_length=255)
 
 
 class Alert(SQLModel, table=True):
@@ -168,6 +169,7 @@ class Alert(SQLModel, table=True):
     entity: str = SQLField(index=True, max_length=255)
     status: AlertStatus = SQLField(default=AlertStatus.OPEN, index=True)
     created_at: datetime = SQLField(default_factory=utc_now, index=True)
+    workspace_id: str = SQLField(index=True, max_length=255)
 
     remediations: list["RemediationAction"] = Relationship(back_populates="alert")
 
@@ -189,6 +191,7 @@ class GraphNode(SQLModel, table=True):
         sa_column=Column(JSON, nullable=False),
     )
     created_at: datetime = SQLField(default_factory=utc_now)
+    workspace_id: str = SQLField(index=True, max_length=255)
 
 
 class GraphEdge(SQLModel, table=True):
@@ -208,6 +211,7 @@ class GraphEdge(SQLModel, table=True):
         sa_column=Column(JSON, nullable=False),
     )
     created_at: datetime = SQLField(default_factory=utc_now)
+    workspace_id: str = SQLField(index=True, max_length=255)
 
 
 class RemediationAction(SQLModel, table=True):
@@ -230,6 +234,7 @@ class RemediationAction(SQLModel, table=True):
     result: str | None = SQLField(default=None)
     created_at: datetime = SQLField(default_factory=utc_now)
     completed_at: datetime | None = SQLField(default=None)
+    workspace_id: str = SQLField(index=True, max_length=255)
 
     alert: Alert | None = Relationship(back_populates="remediations")
 
@@ -278,6 +283,7 @@ class HumanReview(SQLModel, table=True):
     reviewed_at: datetime | None = SQLField(default=None, index=True)
     review_comment: str | None = SQLField(default=None, max_length=2048)
     created_at: datetime = SQLField(default_factory=utc_now, index=True)
+    workspace_id: str = SQLField(index=True, max_length=255)
 
 
 class Honeytoken(SQLModel, table=True):
@@ -299,6 +305,7 @@ class Honeytoken(SQLModel, table=True):
         default_factory=dict,
         sa_column=Column("metadata", JSON, nullable=False),
     )
+    workspace_id: str = SQLField(index=True, max_length=255)
 
 
 # ---------------------------------------------------------------------------
@@ -327,6 +334,7 @@ class TelemetryEventRead(BaseModel):
     user: str
     event_type: EventType
     status: EventStatus
+    workspace_id: str
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +348,7 @@ class AlertCreate(BaseModel):
     risk_score: float = Field(ge=0.0, le=100.0)
     entity: str = Field(min_length=1, max_length=255)
     status: AlertStatus = AlertStatus.OPEN
+    workspace_id: str
 
 
 class AlertUpdate(BaseModel):
@@ -358,6 +367,7 @@ class AlertRead(BaseModel):
     entity: str
     status: AlertStatus
     created_at: datetime
+    workspace_id: str
 
 
 # ---------------------------------------------------------------------------
@@ -391,6 +401,7 @@ class GraphNodeCreate(BaseModel):
     risk_score: float = Field(default=0.0, ge=0.0, le=100.0)
     position: Position = Field(default_factory=Position)
     properties: dict[str, Any] = Field(default_factory=dict)
+    workspace_id: str
 
 
 class GraphNodeRead(BaseModel):
@@ -402,6 +413,7 @@ class GraphNodeRead(BaseModel):
     type: str | None = None
     position: Position = Field(default_factory=Position)
     data: GraphNodeData
+    workspace_id: str
 
     @model_validator(mode="before")
     @classmethod
@@ -418,6 +430,7 @@ class GraphNodeRead(BaseModel):
                     "risk_score": value.risk_score,
                     "properties": value.properties or {},
                 },
+                "workspace_id": value.workspace_id,
             }
         return value
 
@@ -440,6 +453,7 @@ class GraphEdgeCreate(BaseModel):
     weight: float = Field(default=1.0, ge=0.0)
     animated: bool = False
     properties: dict[str, Any] = Field(default_factory=dict)
+    workspace_id: str
 
     @field_validator("target_id")
     @classmethod
@@ -462,6 +476,7 @@ class GraphEdgeRead(BaseModel):
     label: str | None = None
     animated: bool = False
     data: GraphEdgeData | None = None
+    workspace_id: str
 
     @model_validator(mode="before")
     @classmethod
@@ -479,6 +494,7 @@ class GraphEdgeRead(BaseModel):
                     "weight": value.weight,
                     "properties": value.properties or {},
                 },
+                "workspace_id": value.workspace_id,
             }
         return value
 
@@ -527,6 +543,7 @@ class RemediationActionCreate(BaseModel):
     target_entity: str = Field(min_length=1, max_length=255)
     status: RemediationStatus = RemediationStatus.PENDING
     parameters: dict[str, Any] = Field(default_factory=dict)
+    workspace_id: str
 
 
 class RemediationActionUpdate(BaseModel):
@@ -550,6 +567,7 @@ class RemediationActionRead(BaseModel):
     result: str | None
     created_at: datetime
     completed_at: datetime | None
+    workspace_id: str
 
 
 class HumanReviewRead(BaseModel):
@@ -566,6 +584,7 @@ class HumanReviewRead(BaseModel):
     reviewed_by: str | None = None
     review_comment: str | None = None
     reviewed_at: datetime | None = None
+    workspace_id: str
 
 
 class ReviewDecisionRequest(BaseModel):
@@ -636,6 +655,7 @@ class SimulationStartRequest(BaseModel):
 class SimulationStatusRead(BaseModel):
     state: str
     message: str = ""
+    workspace_id: str = ""
 
 
 class DevWebSocketTestRead(BaseModel):
@@ -673,6 +693,7 @@ class HoneytokenRead(BaseModel):
     triggered_by: str | None
     source_ip: str | None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    workspace_id: str
 
     @model_validator(mode="before")
     @classmethod
@@ -690,6 +711,7 @@ class HoneytokenRead(BaseModel):
                 "triggered_by": value.triggered_by,
                 "source_ip": value.source_ip,
                 "metadata": value.extra_data or {},
+                "workspace_id": value.workspace_id,
             }
         return value
 

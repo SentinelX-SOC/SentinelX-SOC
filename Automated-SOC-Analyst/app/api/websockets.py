@@ -4,6 +4,7 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.auth.service import auth_service
 from app.services.websocket import manager
 
 logger = logging.getLogger(__name__)
@@ -14,13 +15,23 @@ router = APIRouter(tags=["websockets"])
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     """Accept a client at ``/ws`` and keep the socket open until disconnect."""
-    await manager.connect(websocket)
+    cookie = websocket.cookies.get("soc_session")
+    if not cookie:
+        await websocket.close(code=1008)
+        return
+    user = auth_service.read_session(cookie)
+    if user is None or not user.id:
+        await websocket.close(code=1008)
+        return
+    workspace_id = str(user.id)
+    await manager.connect(workspace_id, websocket)
     client = websocket.client
     logger.info(
-        "WebSocket handshake accepted from %s:%s (active=%d)",
+        "WebSocket handshake accepted from %s:%s workspace=%s (active=%d)",
         getattr(client, "host", "unknown"),
         getattr(client, "port", "?"),
-        len(manager.active_connections),
+        workspace_id,
+        manager.connection_count,
     )
     try:
         while True:
@@ -34,8 +45,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             getattr(client, "port", "?"),
         )
     finally:
-        await manager.disconnect(websocket)
+        await manager.disconnect(workspace_id, websocket)
         logger.info(
             "WebSocket connection closed (active=%d)",
-            len(manager.active_connections),
+            manager.connection_count,
         )

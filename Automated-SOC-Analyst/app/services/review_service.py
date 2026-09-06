@@ -44,6 +44,7 @@ class HumanReviewService:
         reason: str,
         alert_id: UUID | None = None,
         target_entity: str | None = None,
+        workspace_id: str,
     ) -> HumanReviewRead:
         review = HumanReview(
             id=uuid4(),
@@ -54,23 +55,24 @@ class HumanReviewService:
             reason=_clip_reason(reason),
             status=ReviewStatus.PENDING,
             created_at=utc_now(),
+            workspace_id=workspace_id,
         )
-        stored = self._repository.create_review(review)
+        stored = self._repository.create_review(workspace_id, review)
         target = (target_entity or event.source or "").strip()
         if target:
             self._targets[stored.id] = target
-            self._entity_reviews[target] = stored.id
+            self._entity_reviews[f"{workspace_id}:{target}"] = stored.id
         return HumanReviewRead.model_validate(stored)
 
-    def get(self, review_id: str | UUID) -> HumanReviewRead:
+    def get(self, review_id: str | UUID, *, workspace_id: str) -> HumanReviewRead:
         key = UUID(str(review_id)) if not isinstance(review_id, UUID) else review_id
-        stored = self._repository.get_review(key)
+        stored = self._repository.get_review(workspace_id, key)
         if stored is None:
             raise ValueError(f"Review not found: {key}")
         return HumanReviewRead.model_validate(stored)
 
-    def list(self, *, status: ReviewStatus | None = None) -> list[HumanReviewRead]:
-        rows = self._repository.list_reviews(status=status)
+    def list(self, *, workspace_id: str, status: ReviewStatus | None = None) -> list[HumanReviewRead]:
+        rows = self._repository.list_reviews(workspace_id, status=status)
         return [HumanReviewRead.model_validate(row) for row in rows]
 
     def decide(
@@ -80,9 +82,10 @@ class HumanReviewService:
         decision: ReviewStatus,
         reviewed_by: str,
         comment: str | None = None,
+        workspace_id: str,
     ) -> HumanReviewRead:
         key = UUID(str(review_id)) if not isinstance(review_id, UUID) else review_id
-        stored = self._repository.get_review(key)
+        stored = self._repository.get_review(workspace_id, key)
         if stored is None:
             raise ValueError(f"Review not found: {key}")
         if decision is ReviewStatus.PENDING:
@@ -94,22 +97,23 @@ class HumanReviewService:
         stored.reviewed_by = reviewed_by
         stored.reviewed_at = utc_now()
         stored.review_comment = comment
-        updated = self._repository.update_review(stored)
+        updated = self._repository.update_review(workspace_id, stored)
         return HumanReviewRead.model_validate(updated)
 
-    def get_by_status(self, status: ReviewStatus) -> list[HumanReviewRead]:
-        return self.list(status=status)
+    def get_by_status(self, status: ReviewStatus, *, workspace_id: str) -> list[HumanReviewRead]:
+        return self.list(workspace_id=workspace_id, status=status)
 
-    def pending_for_entity(self, target_entity: str | None) -> HumanReviewRead | None:
+    def pending_for_entity(self, target_entity: str | None, *, workspace_id: str) -> HumanReviewRead | None:
         target = (target_entity or "").strip()
         if not target:
             return None
-        review_id = self._entity_reviews.get(target)
+        review_id = self._entity_reviews.get(f"{workspace_id}:{target}") or self._entity_reviews.get(target)
         if review_id is None:
             return None
         try:
-            review = self.get(review_id)
+            review = self.get(review_id, workspace_id=workspace_id)
         except ValueError:
+            self._entity_reviews.pop(f"{workspace_id}:{target}", None)
             self._entity_reviews.pop(target, None)
             return None
         if review.status is not ReviewStatus.PENDING:
@@ -123,15 +127,16 @@ class HumanReviewService:
         reason: str,
         risk_score: float,
         alert_id: UUID | None = None,
+        workspace_id: str,
     ) -> HumanReviewRead:
-        stored = self._repository.get_review(review.id)
+        stored = self._repository.get_review(workspace_id, review.id)
         if stored is None or stored.status is not ReviewStatus.PENDING:
             return review
         stored.reason = _clip_reason(reason)
         stored.risk_score = max(float(stored.risk_score), float(risk_score))
         if alert_id is not None:
             stored.alert_id = alert_id
-        updated = self._repository.update_review(stored)
+        updated = self._repository.update_review(workspace_id, stored)
         return HumanReviewRead.model_validate(updated)
 
     def record_honeytoken_evidence(
@@ -149,10 +154,10 @@ class HumanReviewService:
             f"{device_id or event.source}; critical risk {risk_score:.1f}/100."
         )
         target = (device_id or event.source or "").strip()
-        existing = self.pending_for_entity(target)
+        existing = self.pending_for_entity(target, workspace_id=event.workspace_id)
         if existing is not None:
             try:
-                stored = self._repository.get_review(existing.id)
+                stored = self._repository.get_review(event.workspace_id, existing.id)
                 if stored is None or stored.status is not ReviewStatus.PENDING:
                     existing = None
                 else:
@@ -160,7 +165,7 @@ class HumanReviewService:
                     stored.risk_score = max(float(stored.risk_score), float(risk_score))
                     if alert_id is not None:
                         stored.alert_id = alert_id
-                    updated = self._repository.update_review(stored)
+                    updated = self._repository.update_review(event.workspace_id, stored)
                     return HumanReviewRead.model_validate(updated)
             except Exception:
                 logger.exception("Failed to update human review with honeytoken evidence")
@@ -173,6 +178,7 @@ class HumanReviewService:
                 reason=evidence,
                 alert_id=alert_id,
                 target_entity=target or None,
+                workspace_id=event.workspace_id,
             )
         except Exception:
             logger.exception("Failed to create human review for honeytoken trigger")
@@ -204,12 +210,13 @@ class HumanReviewService:
                 target,
                 reason=review.reason,
                 alert_id=alert_id,
+                workspace_id=review.workspace_id,
             )
         except Exception:
             logger.exception("Failed to isolate device after review approval")
             return None, None
         try:
-            self._repository.create_remediation(action)
+            self._repository.create_remediation(review.workspace_id, action)
         except Exception:
             logger.exception("Failed to persist remediation after review approval")
         return RemediationActionRead.model_validate(action), target
@@ -219,7 +226,7 @@ class HumanReviewService:
         if target:
             return target
         try:
-            event = self._repository.get_telemetry_event(review.event_id)
+            event = self._repository.get_telemetry_event(review.workspace_id, review.event_id)
         except Exception:
             event = None
         if event is not None and (event.source or "").strip():

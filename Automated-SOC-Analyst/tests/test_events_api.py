@@ -5,8 +5,16 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core.deps import event_pipeline, ml_service
+from tests.conftest import authenticate, patch_pipeline_process
+
+from app.core.deps import ml_service
 from app.models.schemas import EventStatus, EventType, MLPredictionResponse, TelemetryEventRead
+
+
+@pytest.fixture(autouse=True)
+def _login(client: TestClient) -> str:
+    return authenticate(client)
+
 
 
 def _payload() -> dict[str, str]:
@@ -25,7 +33,7 @@ def test_ingest_event_delegates_to_pipeline_and_returns_submitted_event(
 ) -> None:
     captured: dict[str, object] = {}
 
-    async def process(event: TelemetryEventRead, *, device_id: str | None = None):
+    async def process(event: TelemetryEventRead, *, device_id: str | None = None, workspace_id: str | None = None):
         captured["event"] = event
         captured["device_id"] = device_id
         return {
@@ -35,7 +43,7 @@ def test_ingest_event_delegates_to_pipeline_and_returns_submitted_event(
             "policy": {"allowed": False, "action": None, "reason": "test"},
         }
 
-    monkeypatch.setattr(event_pipeline, "process", process)
+    patch_pipeline_process(monkeypatch, process)
     response = client.post("/api/v1/events", json=_payload())
 
     assert response.status_code == 200, response.text
@@ -57,7 +65,7 @@ def test_ingest_event_invalid_payload_does_not_invoke_pipeline(
         called = True
         raise AssertionError("pipeline must not be called")
 
-    monkeypatch.setattr(event_pipeline, "process", process)
+    patch_pipeline_process(monkeypatch, process)
     response = client.post("/api/v1/events", json={"source": "10.0.0.25"})
 
     assert response.status_code == 422
@@ -112,7 +120,7 @@ def test_ingest_event_pipeline_exception_is_not_success(
     async def process(*_args: object, **_kwargs: object):
         raise RuntimeError("internal test failure")
 
-    monkeypatch.setattr(event_pipeline, "process", process)
+    patch_pipeline_process(monkeypatch, process)
     response = client.post("/api/v1/events", json=_payload())
 
     assert response.status_code == 500

@@ -34,6 +34,7 @@ def _event(**overrides: object) -> TelemetryEventRead:
         "user": "alice",
         "event_type": EventType.LOGIN,
         "status": EventStatus.SUCCESS,
+        "workspace_id": "test-workspace",
     }
     payload.update(overrides)
     return TelemetryEventRead.model_validate(payload)
@@ -50,6 +51,7 @@ def _node(entity: str, node_type: GraphNodeType, *, node_id: str) -> GraphNodeRe
             entity=entity,
             risk_score=1.0,
         ),
+        workspace_id="test-workspace",
     )
 
 
@@ -110,6 +112,7 @@ def test_existing_graph_state_is_queried_and_written_to_context() -> None:
             target="host:10.0.0.20",
             type=GraphEdgeType.AUTHENTICATED_TO.value,
             data=GraphEdgeData(edge_type=GraphEdgeType.AUTHENTICATED_TO),
+            workspace_id="test-workspace",
         )
         snapshot = GraphRead(nodes=[user_node, source_node, dest_node], edges=[edge])
         graph_service = _FakeGraphService(
@@ -240,6 +243,7 @@ def test_unrelated_context_fields_are_preserved() -> None:
             entity="alice",
             status=AlertStatus.OPEN,
             created_at=datetime.now(timezone.utc),
+            workspace_id="test-workspace",
         )
         policy = PolicyDecisionRead(
             allowed=False,

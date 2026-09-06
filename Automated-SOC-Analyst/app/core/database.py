@@ -79,6 +79,7 @@ def init_db() -> None:
     """Create all discovered SQLModel tables for the existing durable entities."""
     SQLModel.metadata.create_all(engine)
     _ensure_auth_columns()
+    _ensure_workspace_columns()
 
 
 def _ensure_auth_columns() -> None:
@@ -98,6 +99,40 @@ def _ensure_auth_columns() -> None:
                 connection.exec_driver_sql(
                     "ALTER TABLE users ADD COLUMN credentials_version INTEGER DEFAULT 0"
                 )
+    except Exception:
+        return
+
+
+_WORKSPACE_TABLES = (
+    "telemetry_events",
+    "alerts",
+    "remediation_actions",
+    "honeytokens",
+    "human_reviews",
+    "graph_nodes",
+    "graph_edges",
+)
+
+
+def _ensure_workspace_columns() -> None:
+    """Add workspace_id to existing SQLite SOC tables created before isolation."""
+    url = str(getattr(engine, "url", ""))
+    if not url.startswith("sqlite"):
+        return
+    try:
+        with engine.begin() as connection:
+            for table in _WORKSPACE_TABLES:
+                rows = connection.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()
+                if not rows:
+                    continue
+                columns = {row[1] for row in rows}
+                if "workspace_id" not in columns:
+                    connection.exec_driver_sql(
+                        f"ALTER TABLE {table} ADD COLUMN workspace_id VARCHAR(255) NOT NULL DEFAULT ''"
+                    )
+                    connection.exec_driver_sql(
+                        f"CREATE INDEX IF NOT EXISTS ix_{table}_workspace_id ON {table} (workspace_id)"
+                    )
     except Exception:
         return
 

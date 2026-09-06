@@ -101,10 +101,10 @@ class AnomalyDetector:
         if self._ml_service is not None:
             ml = await self._ml_service.predict(event)
             if ml is not None:
-                risk_01 = _clamp(ml.anomaly_score)
+                risk_100 = float(ml.risk_score)
                 return DetectionScore(
-                    risk_01=risk_01,
-                    risk_100=float(ml.risk_score),
+                    risk_01=_clamp(risk_100 / 100.0),
+                    risk_100=risk_100,
                     source="ml",
                     ml_prediction=ml,
                     reasons=(

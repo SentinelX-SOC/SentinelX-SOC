@@ -14,7 +14,8 @@ from starlette.websockets import WebSocketState
 from app.agents.multi_agent_service import MultiAgentService
 from app.core import database
 from app.core.database import init_db, reset_database
-from app.core.deps import event_pipeline, graph_service, manager, ml_service, multi_agent_service
+from app.core.deps import manager, ml_service, multi_agent_service
+from tests.conftest import TEST_WORKSPACE_ID, authenticate
 from app.models.schemas import (
     EventStatus,
     EventType,
@@ -51,6 +52,7 @@ def _event(*, user: str = "U001", source: str = "10.0.0.25", destination: str = 
         user=user,
         event_type=EventType.LOGIN,
         status=EventStatus.FAILURE,
+        workspace_id="test-workspace",
     )
 
 
@@ -59,7 +61,7 @@ def _run(coro):  # type: ignore[no-untyped-def]
 
 
 @pytest.fixture(autouse=True)
-def _isolate_graph_ws() -> None:
+def _isolate_graph_ws(graph_service) -> None:
     graph_service.graph.clear()
     graph_service._applied_event_ids.clear()
     manager.active_connections.clear()
@@ -72,9 +74,9 @@ def _isolate_graph_ws() -> None:
 
 
 @pytest.fixture()
-def skip_persist(monkeypatch: pytest.MonkeyPatch) -> None:
+def skip_persist(monkeypatch: pytest.MonkeyPatch, event_pipeline) -> None:
     monkeypatch.setattr(event_pipeline.repository, "persist_pipeline_result", lambda **_kwargs: None)
-    monkeypatch.setattr(event_pipeline.repository, "persist_pipeline_results", lambda _items: None)
+    monkeypatch.setattr(event_pipeline.repository, "persist_pipeline_results", lambda *_items, **_kwargs: None)
 
 
 @pytest.fixture()
@@ -106,7 +108,7 @@ def snapshot_counter(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
 
 def _attach_client() -> _DummySocket:
     socket = _DummySocket()
-    manager.active_connections.append(socket)  # type: ignore[arg-type]
+    manager.active_connections[TEST_WORKSPACE_ID].append(socket)  # type: ignore[arg-type]
     return socket
 
 
@@ -121,8 +123,8 @@ def test_graph_mutation_still_occurs_for_every_event(
     assert graph_service.graph.number_of_nodes() > before
     assert "user:U101" in graph_service.graph
     assert "user:U102" in graph_service.graph
-    body = client.get("/api/v1/graph/").json()
-    ids = {node["id"] for node in body["nodes"]}
+    snapshot = graph_service.get_react_flow_graph()
+    ids = {node.id for node in snapshot.nodes}
     assert "user:U101" in ids
     assert "user:U102" in ids
 
@@ -222,6 +224,7 @@ def test_existing_rest_behavior_unchanged(
     skip_persist: None,
     heuristic_ml: None,
 ) -> None:
+    authenticate(client)
     created = client.post(
         "/api/v1/events",
         json={

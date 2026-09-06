@@ -2,6 +2,8 @@ import asyncio
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from fastapi.testclient import TestClient
+
 from app.agents.context import AgentContext
 from app.agents.decision_agent import DecisionAgent
 from app.agents.remediation_agent import RemediationAgent
@@ -26,6 +28,7 @@ def _event(**overrides: object) -> TelemetryEventRead:
         "user": "alice",
         "event_type": EventType.LOGIN,
         "status": EventStatus.SUCCESS,
+        "workspace_id": "test-workspace",
     }
     payload.update(overrides)
     return TelemetryEventRead.model_validate(payload)
@@ -53,12 +56,14 @@ class _FakeRemediationService:
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    def isolate_device(self, device_id: str, *, reason: str, alert_id: object) -> tuple[object, object]:
+    def isolate_device(
+        self, device_id: str, *, reason: str, alert_id: object, workspace_id: str = ""
+    ) -> tuple[object, object]:
         self.calls.append(device_id)
         return object(), object()
 
 
-def test_review_request_creation_and_pending_state() -> None:
+def test_review_request_creation_and_pending_state(client: TestClient) -> None:
     service = HumanReviewService()
     event = _event()
 
@@ -67,6 +72,7 @@ def test_review_request_creation_and_pending_state() -> None:
         action=RemediationActionType.ISOLATE_DEVICE,
         risk_score=92.5,
         reason="High-risk anomalous telemetry",
+        workspace_id="test-workspace",
     )
 
     assert review.status == ReviewStatus.PENDING
@@ -76,7 +82,7 @@ def test_review_request_creation_and_pending_state() -> None:
     assert review.reason == "High-risk anomalous telemetry"
 
 
-def test_review_decision_updates_state() -> None:
+def test_review_decision_updates_state(client: TestClient) -> None:
     service = HumanReviewService()
     event = _event()
     review = service.create_pending_review(
@@ -84,6 +90,7 @@ def test_review_decision_updates_state() -> None:
         action=RemediationActionType.ISOLATE_DEVICE,
         risk_score=92.5,
         reason="High-risk anomalous telemetry",
+        workspace_id="test-workspace",
     )
 
     approved = service.decide(
@@ -91,6 +98,7 @@ def test_review_decision_updates_state() -> None:
         decision=ReviewStatus.APPROVED,
         reviewed_by="analyst@example.com",
         comment="Approved; isolate device",
+        workspace_id="test-workspace",
     )
     assert approved.status == ReviewStatus.APPROVED
     assert approved.reviewed_by == "analyst@example.com"
@@ -102,11 +110,12 @@ def test_review_decision_updates_state() -> None:
         decision=ReviewStatus.REJECTED,
         reviewed_by="analyst@example.com",
         comment="Rejected; no action",
+        workspace_id="test-workspace",
     )
     assert rejected.status == ReviewStatus.REJECTED
 
 
-def test_decision_agent_creates_pending_review_for_action() -> None:
+def test_decision_agent_creates_pending_review_for_action(client: TestClient) -> None:
     async def _run() -> None:
         service = HumanReviewService()
         decision = PolicyDecisionRead(
@@ -128,7 +137,7 @@ def test_decision_agent_creates_pending_review_for_action() -> None:
         assert result.review_required is True
         assert result.review_status == ReviewStatus.PENDING
         assert result.review_request_id is not None
-        assert service.get(result.review_request_id).status == ReviewStatus.PENDING
+        assert service.get(result.review_request_id, workspace_id="test-workspace").status == ReviewStatus.PENDING
 
     asyncio.run(_run())
 
@@ -142,6 +151,7 @@ def test_remediation_agent_requires_approval_before_execute() -> None:
             entity="10.0.0.20",
             status="open",
             created_at=datetime.now(timezone.utc),
+            workspace_id="test-workspace",
         )
         policy = PolicyDecisionRead(
             allowed=True,

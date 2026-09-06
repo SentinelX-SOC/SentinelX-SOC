@@ -38,6 +38,7 @@ def _event(**overrides: object) -> TelemetryEventRead:
         "user": "alice",
         "event_type": EventType.LOGIN,
         "status": EventStatus.SUCCESS,
+        "workspace_id": "test-workspace",
     }
     payload.update(overrides)
     return TelemetryEventRead.model_validate(payload)
@@ -50,6 +51,7 @@ def _alert(**overrides: object) -> AlertRead:
         "entity": "alice",
         "status": AlertStatus.OPEN,
         "created_at": datetime.now(timezone.utc),
+        "workspace_id": "test-workspace",
     }
     payload.update(overrides)
     return AlertRead.model_validate(payload)
@@ -87,6 +89,7 @@ class _FakeRemediationService:
         *,
         reason: str,
         alert_id: UUID,
+        workspace_id: str = "",
     ) -> tuple[RemediationAction, DeviceStateRead]:
         now = utc_now()
         self.calls.append(
@@ -110,6 +113,7 @@ class _FakeRemediationService:
             parameters={"simulated": True, "reason": reason},
             result=f"Simulated isolation of device {device_id}",
             completed_at=now,
+            workspace_id=workspace_id or "test-workspace",
         )
         self.action = action
         self.device = device
@@ -123,6 +127,7 @@ class _BrokenRemediationService(_FakeRemediationService):
         *,
         reason: str,
         alert_id: UUID,
+        workspace_id: str = "",
     ) -> tuple[RemediationAction, DeviceStateRead]:
         self.calls.append(
             {
@@ -217,6 +222,7 @@ def test_graph_threat_analysis_is_preserved() -> None:
                 entity="10.0.0.20",
                 risk_score=1.0,
             ),
+            workspace_id="test-workspace",
         )
         snapshot = GraphRead(nodes=[neighbor], edges=[])
         agent = RemediationAgent(remediation_service=_FakeRemediationService())

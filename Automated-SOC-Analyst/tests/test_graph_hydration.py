@@ -39,11 +39,12 @@ def _event(
         user=user,
         event_type=event_type,
         status=status,
+        workspace_id="test-workspace",
     )
 
 
 def _persist(repo: SocRepository, event: TelemetryEventRead) -> None:
-    repo.create_telemetry_event(TelemetryEvent.model_validate(event.model_dump()))
+    repo.create_telemetry_event("test-workspace", TelemetryEvent.model_validate(event.model_dump()))
 
 
 def _graph_snapshot(service: GraphService) -> dict[str, object]:
@@ -55,10 +56,11 @@ def test_persisted_telemetry_event_rebuilds_graph_state(repo: SocRepository) -> 
     _persist(repo, event)
 
     expected = GraphService()
+    expected.workspace_id = "test-workspace"
     expected.add_telemetry_event(event)
 
     hydrated = GraphService()
-    hydrated.hydrate_from_database(repo)
+    hydrated.hydrate_from_database("test-workspace", repo)
 
     assert hydrated.graph.number_of_nodes() > 0
     assert "user:U001" in hydrated.graph
@@ -82,11 +84,12 @@ def test_multiple_persisted_events_rebuild_expected_graph(repo: SocRepository) -
     _persist(repo, first)
 
     expected = GraphService()
+    expected.workspace_id = "test-workspace"
     expected.add_telemetry_event(first)
     expected.add_telemetry_event(second)
 
     hydrated = GraphService()
-    hydrated.hydrate_from_database(repo)
+    hydrated.hydrate_from_database("test-workspace", repo)
 
     assert hydrated.graph.number_of_nodes() == expected.graph.number_of_nodes()
     assert hydrated.graph.number_of_edges() == expected.graph.number_of_edges()
@@ -98,7 +101,7 @@ def test_multiple_persisted_events_rebuild_expected_graph(repo: SocRepository) -
 
 def test_empty_telemetry_history_leaves_graph_empty(repo: SocRepository) -> None:
     hydrated = GraphService()
-    hydrated.hydrate_from_database(repo)
+    hydrated.hydrate_from_database("test-workspace", repo)
 
     assert hydrated.graph.number_of_nodes() == 0
     assert hydrated.graph.number_of_edges() == 0
@@ -115,13 +118,13 @@ def test_hydration_does_not_broadcast_websocket_events(
 
     captured: list[object] = []
 
-    async def _capture(payload: object) -> None:
-        captured.append(payload)
+    async def _capture(*_args: object, **_kwargs: object) -> None:
+        captured.append(_args)
 
-    monkeypatch.setattr(manager, "broadcast_json", _capture)
+    monkeypatch.setattr(manager, "send_to_workspace", _capture)
 
     hydrated = GraphService()
-    hydrated.hydrate_from_database(repo)
+    hydrated.hydrate_from_database("test-workspace", repo)
 
     assert hydrated.graph.number_of_nodes() > 0
     assert captured == []
@@ -132,12 +135,13 @@ def test_hydration_does_not_duplicate_graph_state_when_called_twice(repo: SocRep
     _persist(repo, event)
 
     expected = GraphService()
+    expected.workspace_id = "test-workspace"
     expected.add_telemetry_event(event)
 
     hydrated = GraphService()
-    hydrated.hydrate_from_database(repo)
+    hydrated.hydrate_from_database("test-workspace", repo)
     first = _graph_snapshot(hydrated)
-    hydrated.hydrate_from_database(repo)
+    hydrated.hydrate_from_database("test-workspace", repo)
 
     assert _graph_snapshot(hydrated) == first
     assert first == _graph_snapshot(expected)
@@ -149,12 +153,12 @@ def test_hydration_does_not_duplicate_graph_state_when_called_twice(repo: SocRep
 def test_hydration_failure_does_not_prevent_startup(
     repo: SocRepository, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    def _boom() -> list[TelemetryEvent]:
+    def _boom(_workspace_id: str) -> list[TelemetryEvent]:
         raise RuntimeError("sqlite unavailable")
 
     monkeypatch.setattr(repo, "list_telemetry_events_chronological", _boom)
     hydrated = GraphService()
-    hydrated.hydrate_from_database(repo)
+    hydrated.hydrate_from_database("test-workspace", repo)
 
     assert hydrated.graph.number_of_nodes() == 0
     assert "Failed to hydrate graph from persisted telemetry" in caplog.text

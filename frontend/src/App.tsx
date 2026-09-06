@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   Check,
@@ -86,6 +86,36 @@ function App() {
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [reviewsError, setReviewsError] = useState<string | null>(null);
   const socketRef = useRef<SocWebSocket | null>(null);
+  const handleLogoutRef = useRef<() => Promise<void>>(async () => undefined);
+
+  const resetWorkspaceState = useCallback(() => {
+    setHealth(null);
+    setGraph(null);
+    setHoneytokens([]);
+    setSimulation(null);
+    setLiveEvents([]);
+    setLastAlert(null);
+    setRemediationActivity([]);
+    setReviews([]);
+    setReviewsError(null);
+    setReviewsLoading(false);
+    setSearch('');
+    setLoadError(null);
+    setLoading(true);
+    setEventForm({ ...emptyEventForm, timestamp: new Date().toISOString() });
+    setEventSubmission({ loading: false, error: null, result: null });
+    setSocketState('disconnected');
+    setActiveScreen('overview');
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    socketRef.current?.disconnect();
+    socketRef.current = null;
+    await logout().catch(() => undefined);
+    resetWorkspaceState();
+    setAuthUser(null);
+  }, [resetWorkspaceState]);
+  handleLogoutRef.current = handleLogout;
 
   useEffect(() => {
     void getCurrentUser()
@@ -96,9 +126,12 @@ function App() {
 
   useEffect(() => {
     if (!authUser) {
+      resetWorkspaceState();
       return undefined;
     }
+    let cancelled = false;
     const load = async () => {
+      setLoading(true);
       setReviewsLoading(true);
       setReviewsError(null);
       try {
@@ -109,6 +142,9 @@ function App() {
           getSimulationStatus(),
           listReviews(),
         ]);
+        if (cancelled) {
+          return;
+        }
         const failures: string[] = [];
         if (healthRes.status === 'fulfilled') setHealth(healthRes.value); else failures.push('health');
         if (graphRes.status === 'fulfilled') setGraph(graphRes.value); else failures.push('graph');
@@ -117,12 +153,17 @@ function App() {
         if (reviewRes.status === 'fulfilled') setReviews(reviewRes.value); else setReviewsError(reviewRes.reason instanceof Error ? reviewRes.reason.message : 'Reviews could not be loaded');
         setLoadError(failures.length ? `Unavailable backend resources: ${failures.join(', ')}` : null);
       } finally {
-        setReviewsLoading(false);
-        setLoading(false);
+        if (!cancelled) {
+          setReviewsLoading(false);
+          setLoading(false);
+        }
       }
     };
     void load();
-  }, [authUser]);
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser, resetWorkspaceState]);
 
   useEffect(() => {
     if (!authUser) {
@@ -135,6 +176,10 @@ function App() {
     const ws = new SocWebSocket(resolveWebSocketUrl());
     socketRef.current = ws;
     ws.connect((event) => {
+      if (event.event === 'session_invalid') {
+        setSocketState('disconnected');
+        return;
+      }
       if (event.event === 'connected') {
         setSocketState('connected');
         return;
@@ -167,6 +212,8 @@ function App() {
         void listHoneytokens().then(setHoneytokens).catch(() => undefined);
         void listReviews().then(setReviews).catch(() => undefined);
       }
+    }, () => {
+      void handleLogoutRef.current();
     });
     return () => {
       ws.disconnect();
@@ -296,7 +343,7 @@ function App() {
             <div className="identity-pill">
               <div className="identity-dot" />
               <div><strong>{authUser.email || authUser.username}</strong><span>{authUser.role}</span></div>
-              <button className="text-btn" onClick={async () => { await logout().catch(() => undefined); setAuthUser(null); }} aria-label="Sign out">Sign out</button>
+              <button className="text-btn" onClick={() => { void handleLogout(); }} aria-label="Sign out">Sign out</button>
             </div>
             <div className="status-pill neutral">
               <Database size={14} />

@@ -31,6 +31,7 @@ def _make_event(**overrides: object) -> TelemetryEventRead:
         "user": "svc-recon",
         "event_type": EventType.LATERAL_MOVEMENT,
         "status": EventStatus.FAILURE,
+        "workspace_id": "test-workspace",
     }
     payload.update(overrides)
     return TelemetryEventRead.model_validate(payload)
@@ -72,6 +73,7 @@ def test_lmstudio_provider_builds_bound_context_and_parses_valid_result() -> Non
             entity="svc-recon",
             status=AlertStatus.OPEN,
             created_at=datetime.now(timezone.utc),
+            workspace_id="test-workspace",
         )
         ml_prediction = MLPredictionResponse(
             event_id=str(event.id),
@@ -139,6 +141,7 @@ def test_lmstudio_provider_falls_back_on_malformed_response() -> None:
             entity="svc-recon",
             status=AlertStatus.OPEN,
             created_at=datetime.now(timezone.utc),
+            workspace_id="test-workspace",
         )
 
         provider = LMStudioProvider(
@@ -168,6 +171,7 @@ def test_lmstudio_provider_falls_back_on_timeout_or_request_failure() -> None:
             entity="svc-recon",
             status=AlertStatus.OPEN,
             created_at=datetime.now(timezone.utc),
+            workspace_id="test-workspace",
         )
 
         provider = LMStudioProvider(

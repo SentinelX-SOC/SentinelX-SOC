@@ -11,9 +11,7 @@ from app.models.schemas import (
     TelemetryEventCreate,
     TelemetryEventRead,
 )
-from app.services.detection import AnomalyDetector
 from app.services.event_pipeline import WORKFLOW_RISK_THRESHOLD, EventPipeline
-from app.services.graph_service import GraphService
 from app.services.ingestion import load_and_normalize_lanl_data
 from app.services.websocket import ConnectionManager
 
@@ -28,18 +26,13 @@ class SimulationState(str, Enum):
 class SimulationEngine:
     """Replays normalized LANL telemetry into the SOC graph and live clients."""
 
-    def __init__(
-        self,
-        graph_service: GraphService,
-        detector: AnomalyDetector,
-        manager: ConnectionManager,
-        pipeline: EventPipeline | None = None,
-    ) -> None:
-        self.graph_service = graph_service
-        self.detector = detector
-        self.manager = manager
+    def __init__(self, pipeline: EventPipeline) -> None:
         self.pipeline = pipeline
+        self.graph_service = pipeline.graph_service
+        self.detector = pipeline.detector
+        self.manager = pipeline.manager
         self.state: SimulationState = SimulationState.IDLE
+        self._workspace_id: str = pipeline.workspace_id
         self._pause_event = asyncio.Event()
         self._pause_event.set()
         self._stop_event = asyncio.Event()
@@ -50,10 +43,14 @@ class SimulationEngine:
         file_path: str,
         speed_multiplier: float = 1.0,
         limit: int = 1000,
+        *,
+        workspace_id: str,
     ) -> None:
         """Load a LANL CSV slice and replay it as a background async task."""
         if speed_multiplier <= 0:
             raise ValueError("speed_multiplier must be greater than 0")
+        if not (workspace_id or "").strip():
+            raise ValueError("workspace_id is required")
         if self._task is not None and not self._task.done():
             raise RuntimeError("Simulation is already active; stop it before starting again")
 
@@ -62,6 +59,7 @@ class SimulationEngine:
             file_path,
             limit,
         )
+        self._workspace_id = workspace_id.strip()
         self._stop_event.clear()
         self._pause_event.set()
         self.state = SimulationState.RUNNING
@@ -111,32 +109,37 @@ class SimulationEngine:
                 self.state = SimulationState.IDLE
 
     async def _process_event(self, created: TelemetryEventCreate) -> None:
-        event = _to_telemetry_read(created)
+        event = _to_telemetry_read(created, workspace_id=self._workspace_id)
         if self.pipeline is not None:
-            await self.pipeline.process(event, device_id=event.source)
+            await self.pipeline.process(event, device_id=event.source, workspace_id=self._workspace_id)
             return
         self.graph_service.add_telemetry_event(event)
         risk_01 = self.detector.predict_risk(event)
         risk_100 = min(100.0, round(risk_01 * 100.0, 2))
 
-        await self.manager.broadcast_json(
+        await self.manager.send_to_workspace(
+            self._workspace_id,
             {
                 "type": "telemetry",
                 "payload": event,
                 "risk_score": risk_100,
-            }
+            },
         )
 
         if risk_100 > WORKFLOW_RISK_THRESHOLD:
             alert = _build_alert(event, risk_100)
-            await self.manager.broadcast_json(
+            await self.manager.send_to_workspace(
+                self._workspace_id,
                 {
                     "type": "alert",
                     "payload": AlertRead.model_validate(alert),
-                }
+                },
             )
 
-        await self.manager.schedule_graph_broadcast(self.graph_service.get_react_flow_graph)
+        await self.manager.schedule_graph_broadcast(
+            self.graph_service.get_react_flow_graph,
+            workspace_id=self._workspace_id,
+        )
 
     async def _interruptible_sleep(self, delay: float) -> None:
         try:
@@ -145,8 +148,10 @@ class SimulationEngine:
             return
 
 
-def _to_telemetry_read(event: TelemetryEventCreate) -> TelemetryEventRead:
-    return TelemetryEventRead.model_validate({"id": uuid4(), **event.model_dump()})
+def _to_telemetry_read(event: TelemetryEventCreate, workspace_id: str) -> TelemetryEventRead:
+    return TelemetryEventRead.model_validate(
+        {"id": uuid4(), "workspace_id": workspace_id, **event.model_dump()}
+    )
 
 
 def _build_alert(event: TelemetryEventRead, risk_100: float) -> Alert:
@@ -155,4 +160,5 @@ def _build_alert(event: TelemetryEventRead, risk_100: float) -> Alert:
         risk_score=min(100.0, round(risk_100, 2)),
         entity=entity,
         status=AlertStatus.OPEN,
+        workspace_id=event.workspace_id,
     )

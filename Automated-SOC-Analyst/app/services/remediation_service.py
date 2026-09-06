@@ -25,6 +25,7 @@ class RemediationService:
         *,
         reason: str,
         alert_id: UUID,
+        workspace_id: str,
     ) -> tuple[RemediationAction, DeviceStateRead]:
         now = utc_now()
         state = DeviceStateRead(
@@ -42,6 +43,7 @@ class RemediationService:
             parameters={"simulated": True, "reason": reason},
             result=f"Simulated isolation of device {device_id}",
             completed_at=now,
+            workspace_id=workspace_id,
         )
         self._actions.append(action)
         return action, state

@@ -87,6 +87,7 @@ def test_database_engine_and_session_creation() -> None:
 
 
 def test_repository_crud_round_trip(repo: SocRepository) -> None:
+    workspace_id = "test-workspace"
     event = TelemetryEvent(
         id=uuid4(),
         timestamp=datetime.now(timezone.utc),
@@ -95,16 +96,17 @@ def test_repository_crud_round_trip(repo: SocRepository) -> None:
         user="U001",
         event_type=EventType.LOGIN,
         status=EventStatus.SUCCESS,
+        workspace_id=workspace_id,
     )
-    repo.create_telemetry_event(event)
+    repo.create_telemetry_event(workspace_id, event)
 
-    stored = repo.get_telemetry_events(limit=10)
+    stored = repo.get_telemetry_events(workspace_id, limit=10)
     assert len(stored) == 1
     assert stored[0].source == event.source
 
-    alert = Alert(risk_score=82.0, entity="U001", status=AlertStatus.OPEN)
-    repo.create_alert(alert)
-    assert repo.get_alert(alert.id) is not None
+    alert = Alert(risk_score=82.0, entity="U001", status=AlertStatus.OPEN, workspace_id=workspace_id)
+    repo.create_alert(workspace_id, alert)
+    assert repo.get_alert(workspace_id, alert.id) is not None
 
     remediation = RemediationAction(
         alert_id=alert.id,
@@ -112,9 +114,10 @@ def test_repository_crud_round_trip(repo: SocRepository) -> None:
         target_entity="D003",
         status=RemediationStatus.PENDING,
         parameters={"simulated": True},
+        workspace_id=workspace_id,
     )
-    repo.create_remediation(remediation)
-    assert repo.list_remediations(alert_id=alert.id)[0].target_entity == "D003"
+    repo.create_remediation(workspace_id, remediation)
+    assert repo.list_remediations(workspace_id, alert_id=alert.id)[0].target_entity == "D003"
 
     honeytoken = Honeytoken(
         id="HT-TEST-1",
@@ -123,9 +126,10 @@ def test_repository_crud_round_trip(repo: SocRepository) -> None:
         value="FAKE-SECRET",
         status=HoneytokenStatus.ACTIVE,
         description="demo",
+        workspace_id=workspace_id,
     )
-    repo.create_honeytoken(honeytoken)
-    stored_token = repo.get_honeytoken("HT-TEST-1")
+    repo.create_honeytoken(workspace_id, honeytoken)
+    stored_token = repo.get_honeytoken(workspace_id, "HT-TEST-1")
     assert stored_token is not None
     assert stored_token.name == "Test Token"
 
@@ -147,6 +151,7 @@ def test_event_pipeline_persists_telemetry_alert_and_remediation(repo: SocReposi
         user="U001",
         event_type=EventType.LATERAL_MOVEMENT,
         status=EventStatus.FAILURE,
+        workspace_id="test-workspace",
     )
 
     async def _score(_event: TelemetryEventRead) -> DetectionScore:
@@ -171,8 +176,8 @@ def test_event_pipeline_persists_telemetry_alert_and_remediation(repo: SocReposi
     result = asyncio.run(_run())
     assert result.alert is not None
     assert result.alert.risk_score == pytest.approx(90.0)
-    assert repo.get_alert(result.alert.id) is not None
-    assert repo.get_telemetry_events(limit=10)[0].event_type == EventType.LATERAL_MOVEMENT
+    assert repo.get_alert("test-workspace", result.alert.id) is not None
+    assert repo.get_telemetry_events("test-workspace", limit=10)[0].event_type == EventType.LATERAL_MOVEMENT
 
 
 def test_persistence_failure_is_safely_ignored(repo: SocRepository, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -212,6 +217,7 @@ def test_persistence_failure_is_safely_ignored(repo: SocRepository, monkeypatch:
         user="U001",
         event_type=EventType.LATERAL_MOVEMENT,
         status=EventStatus.FAILURE,
+        workspace_id="test-workspace",
     )
 
     async def _run() -> object:
@@ -259,6 +265,7 @@ def test_event_pipeline_persistence_failure_does_not_change_policy_result(repo: 
         user="U001",
         event_type=EventType.LATERAL_MOVEMENT,
         status=EventStatus.FAILURE,
+        workspace_id="test-workspace",
     )
 
     result = asyncio.run(pipeline.process(event, device_id=event.source))
@@ -269,7 +276,8 @@ def test_deploy_persists_one_active_honeytoken_row(
     repo: SocRepository, honeytoken_service: HoneytokenService
 ) -> None:
     deployed = honeytoken_service.deploy(
-        HoneytokenDeployRequest(type=HoneytokenType.CREDENTIAL, name="Finance Backup Credential")
+        HoneytokenDeployRequest(type=HoneytokenType.CREDENTIAL, name="Finance Backup Credential"),
+        workspace_id="test-workspace",
     )
 
     rows = _honeytoken_rows(repo, deployed.id)
@@ -287,7 +295,8 @@ def test_trigger_updates_existing_honeytoken_row(
     repo: SocRepository, honeytoken_service: HoneytokenService
 ) -> None:
     deployed = honeytoken_service.deploy(
-        HoneytokenDeployRequest(type=HoneytokenType.CREDENTIAL, name="Finance Backup Credential")
+        HoneytokenDeployRequest(type=HoneytokenType.CREDENTIAL, name="Finance Backup Credential"),
+        workspace_id="test-workspace",
     )
 
     result = asyncio.run(
@@ -314,7 +323,8 @@ def test_deactivate_updates_honeytoken_status_in_sqlite(
     repo: SocRepository, honeytoken_service: HoneytokenService
 ) -> None:
     deployed = honeytoken_service.deploy(
-        HoneytokenDeployRequest(type=HoneytokenType.CREDENTIAL, name="Finance Backup Credential")
+        HoneytokenDeployRequest(type=HoneytokenType.CREDENTIAL, name="Finance Backup Credential"),
+        workspace_id="test-workspace",
     )
 
     deactivated = honeytoken_service.deactivate(deployed.id)
@@ -337,8 +347,9 @@ def test_persist_pipeline_result_commits_event_alert_and_remediation(repo: SocRe
         user="U001",
         event_type=EventType.LATERAL_MOVEMENT,
         status=EventStatus.FAILURE,
+        workspace_id="test-workspace",
     )
-    alert = Alert(risk_score=94.0, entity="U001", status=AlertStatus.OPEN)
+    alert = Alert(risk_score=94.0, entity="U001", status=AlertStatus.OPEN, workspace_id="test-workspace")
     remediation = RemediationAction(
         alert_id=alert.id,
         action_type=RemediationActionType.ISOLATE_DEVICE,
@@ -346,17 +357,18 @@ def test_persist_pipeline_result_commits_event_alert_and_remediation(repo: SocRe
         status=RemediationStatus.COMPLETED,
         parameters={"simulated": True},
         result="Simulated isolation of device 10.0.0.25",
+        workspace_id="test-workspace",
     )
 
-    repo.persist_pipeline_result(event=event, alert=alert, remediation=remediation)
+    repo.persist_pipeline_result(workspace_id="test-workspace", event=event, alert=alert, remediation=remediation)
 
-    events = repo.get_telemetry_events(limit=10)
+    events = repo.get_telemetry_events("test-workspace", limit=10)
     assert len(events) == 1
     assert events[0].id == event.id
-    stored_alert = repo.get_alert(alert.id)
+    stored_alert = repo.get_alert("test-workspace", alert.id)
     assert stored_alert is not None
     assert stored_alert.entity == "U001"
-    remediations = repo.list_remediations(alert_id=alert.id)
+    remediations = repo.list_remediations("test-workspace", alert_id=alert.id)
     assert len(remediations) == 1
     assert remediations[0].target_entity == "10.0.0.25"
     assert _pipeline_row_counts(repo) == (1, 1, 1)
@@ -387,24 +399,26 @@ def test_persist_pipeline_result_rolls_back_all_rows_on_failure(repo: SocReposit
         user="U001",
         event_type=EventType.LATERAL_MOVEMENT,
         status=EventStatus.FAILURE,
+        workspace_id="test-workspace",
     )
-    alert = Alert(risk_score=94.0, entity="U001", status=AlertStatus.OPEN)
+    alert = Alert(risk_score=94.0, entity="U001", status=AlertStatus.OPEN, workspace_id="test-workspace")
     remediation = RemediationAction(
         alert_id=alert.id,
         action_type=RemediationActionType.ISOLATE_DEVICE,
         target_entity="10.0.0.25",
         status=RemediationStatus.COMPLETED,
         parameters={"simulated": True},
+        workspace_id="test-workspace",
     )
 
     with pytest.raises(RuntimeError, match="forced failure after telemetry and alert were staged"):
-        repo.persist_pipeline_result(event=event, alert=alert, remediation=remediation)
+        repo.persist_pipeline_result(workspace_id="test-workspace", event=event, alert=alert, remediation=remediation)
 
     repo.session_factory = original_factory
     assert _pipeline_row_counts(repo) == (0, 0, 0)
-    assert repo.get_telemetry_events(limit=10) == []
-    assert repo.get_alert(alert.id) is None
-    assert repo.list_remediations(alert_id=alert.id) == []
+    assert repo.get_telemetry_events("test-workspace", limit=10) == []
+    assert repo.get_alert("test-workspace", alert.id) is None
+    assert repo.list_remediations("test-workspace", alert_id=alert.id) == []
 
 
 def test_hydrate_from_database_loads_persisted_honeytoken(repo: SocRepository) -> None:
@@ -418,13 +432,14 @@ def test_hydrate_from_database_loads_persisted_honeytoken(repo: SocRepository) -
         description="demo decoy",
         created_at=created_at,
         extra_data={"decoy": True, "generator": "honeytoken_service", "not_a_real_secret": True},
+        workspace_id="test-workspace",
     )
-    repo.create_honeytoken(token)
+    repo.create_honeytoken("test-workspace", token)
 
     service = _fresh_honeytoken_service(repo)
     assert service._tokens == {}
 
-    service.hydrate_from_database()
+    service.hydrate_from_database("test-workspace")
 
     assert set(service._tokens) == {"HT-HYDRATE1"}
     loaded = service._tokens["HT-HYDRATE1"]
@@ -449,8 +464,9 @@ def test_hydrate_from_database_restores_list_and_get_after_restart(repo: SocRepo
         value="\\\\fileserver\\decoy\\payroll.honey",
         status=HoneytokenStatus.ACTIVE,
         description="restart demo",
+        workspace_id="test-workspace",
     )
-    repo.create_honeytoken(token)
+    repo.create_honeytoken("test-workspace", token)
 
     previous = _fresh_honeytoken_service(repo)
     previous._tokens[token.id] = token
@@ -458,9 +474,9 @@ def test_hydrate_from_database_restores_list_and_get_after_restart(repo: SocRepo
     assert previous._tokens == {}
 
     restarted = _fresh_honeytoken_service(repo)
-    restarted.hydrate_from_database()
+    restarted.hydrate_from_database("test-workspace")
 
-    listed = restarted.list_active()
+    listed = restarted.list_active("test-workspace")
     assert len(listed) == 1
     assert listed[0].id == "HT-RESTART1"
     assert listed[0].name == "Payroll Canary File"
@@ -482,11 +498,12 @@ def test_hydrate_from_database_preserves_triggered_state(repo: SocRepository) ->
         triggered_by="U001",
         source_ip="10.0.0.25",
         extra_data={"decoy": True, "not_a_real_secret": True},
+        workspace_id="test-workspace",
     )
-    repo.create_honeytoken(token)
+    repo.create_honeytoken("test-workspace", token)
 
     service = _fresh_honeytoken_service(repo)
-    service.hydrate_from_database()
+    service.hydrate_from_database("test-workspace")
 
     loaded = service._tokens["HT-TRIG1"]
     assert loaded.status == HoneytokenStatus.TRIGGERED
@@ -509,10 +526,12 @@ def test_hydrate_from_database_does_not_duplicate_or_overwrite_memory(repo: SocR
         value="canary://honeytoken/HT-DUP1",
         status=HoneytokenStatus.ACTIVE,
         description="in-memory original",
+        workspace_id="test-workspace",
     )
     service = _fresh_honeytoken_service(repo)
     service._tokens[token.id] = token
     repo.create_honeytoken(
+        "test-workspace",
         Honeytoken(
             id="HT-DUP1",
             type=HoneytokenType.CANARY,
@@ -521,10 +540,11 @@ def test_hydrate_from_database_does_not_duplicate_or_overwrite_memory(repo: SocR
             status=HoneytokenStatus.TRIGGERED,
             description="should not overwrite",
             triggered_by="U999",
+            workspace_id="test-workspace",
         )
     )
 
-    service.hydrate_from_database()
+    service.hydrate_from_database("test-workspace")
 
     assert list(service._tokens) == ["HT-DUP1"]
     loaded = service._tokens["HT-DUP1"]

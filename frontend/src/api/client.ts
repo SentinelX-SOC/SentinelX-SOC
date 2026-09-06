@@ -1,5 +1,8 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 
+/** Axios-equivalent `withCredentials: true` — always attach the `soc_session` cookie. */
+export const withCredentials = true as const;
+
 export function resolveWebSocketUrl(url?: string): string {
   const configured = url ?? import.meta.env.VITE_WS_URL ?? API_BASE_URL;
   const normalized = configured.endsWith('/') ? configured.slice(0, -1) : configured;
@@ -19,7 +22,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
         Accept: 'application/json',
         ...(init.headers ?? {}),
       },
-      credentials: 'include',
+      credentials: withCredentials ? 'include' : 'omit',
       signal: controller.signal,
     });
 

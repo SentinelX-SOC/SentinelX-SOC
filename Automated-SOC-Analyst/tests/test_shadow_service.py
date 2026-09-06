@@ -45,6 +45,7 @@ def _event(**overrides: object) -> TelemetryEventRead:
         "user": "U001",
         "event_type": EventType.LATERAL_MOVEMENT,
         "status": EventStatus.FAILURE,
+        "workspace_id": "test-workspace",
     }
     payload.update(overrides)
     return TelemetryEventRead.model_validate(payload)
@@ -109,6 +110,7 @@ class _FakeGraphService:
                         entity="U001",
                         risk_score=1.0,
                     ),
+                    workspace_id="test-workspace",
                 )
             ],
             edges=[],
@@ -166,6 +168,7 @@ class _FakeRemediationService:
         *,
         reason: str,
         alert_id: UUID,
+        workspace_id: str = "",
     ) -> tuple[RemediationAction, DeviceStateRead]:
         self.calls.append(
             {
@@ -184,6 +187,7 @@ class _FakeRemediationService:
                 parameters={"simulated": True, "reason": reason},
                 result=f"Simulated isolation of device {device_id}",
                 completed_at=now,
+                workspace_id=workspace_id or "test-workspace",
             ),
             DeviceStateRead(
                 device_id=device_id,
@@ -326,7 +330,7 @@ def test_no_websocket_broadcasts_occur(monkeypatch: pytest.MonkeyPatch) -> None:
             raise AssertionError("websocket broadcast is not allowed")
 
         monkeypatch.setattr(
-            "app.services.websocket.ConnectionManager.broadcast_json",
+            "app.services.websocket.ConnectionManager.send_to_workspace",
             _boom,
         )
         service, _, _, _, _ = _shadow()
@@ -415,7 +419,7 @@ def test_event_from_create_matches_api_mapping() -> None:
         status=EventStatus.SUCCESS,
     )
     service, _, _, _, _ = _shadow()
-    event = service.event_from_create(body)
+    event = service.event_from_create(body, workspace_id="test-workspace")
     assert isinstance(event.id, UUID)
     assert event.source == body.source
     assert event.event_type is body.event_type

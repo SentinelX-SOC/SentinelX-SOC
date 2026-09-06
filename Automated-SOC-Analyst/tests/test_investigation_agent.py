@@ -55,6 +55,7 @@ def _make_event(**overrides: object) -> TelemetryEventRead:
         "user": "svc-recon",
         "event_type": EventType.LATERAL_MOVEMENT,
         "status": EventStatus.FAILURE,
+        "workspace_id": "test-workspace",
     }
     payload.update(overrides)
     return TelemetryEventRead.model_validate(payload)
@@ -80,6 +81,7 @@ def test_investigation_service_uses_llm_provider_when_available() -> None:
             entity="svc-recon",
             status=AlertStatus.OPEN,
             created_at=datetime.now(timezone.utc),
+            workspace_id="test-workspace",
         )
         ml_prediction = MLPredictionResponse(
             event_id=str(event.id),
@@ -112,6 +114,7 @@ def test_investigation_service_falls_back_on_llm_failure() -> None:
             entity="svc-recon",
             status=AlertStatus.OPEN,
             created_at=datetime.now(timezone.utc),
+            workspace_id="test-workspace",
         )
         service = InvestigationService(llm_provider=BrokenLLMProvider())
         result = await service.investigate(event, None, alert, graph_service)

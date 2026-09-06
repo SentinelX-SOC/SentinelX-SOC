@@ -11,9 +11,13 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import authenticate
+
 from app.core.config import settings
-from app.core.deps import event_pipeline, graph_service
 from app.models.schemas import TelemetryEventRead
+from app.services.event_pipeline import EventPipeline
+from app.services.graph_service import GraphService
+from app.services.investigation_service import InvestigationService
 from tests.load_test import LOAD_FULL, _events, _isolate, _percentile
 
 
@@ -29,22 +33,29 @@ class InvestigationProfiler:
         self.provider_ok: int = 0
         self._graph = graph_service
 
-    def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        svc = event_pipeline.investigation_service
-        graph = event_pipeline.graph_service
-        self._graph = graph
-        self._wrap_async(monkeypatch, svc, "investigate", "investigation")
-        self._wrap_sync(monkeypatch, svc, "_build_context", "build_context")
-        self._wrap_async(monkeypatch, svc, "_deterministic_investigate", "fallback")
-        self._wrap_async(monkeypatch, svc._llm_provider, "investigate", "provider")
-        self._wrap_async(monkeypatch, event_pipeline, "process", "event")
-        self._wrap_sync(
-            monkeypatch, graph, "get_neighbor_entities", "graph_queries", on_result=self._note_neighbors
-        )
-        self._wrap_sync(monkeypatch, graph, "get_neighbors", "rest_neighbors")
-        self._wrap_sync(monkeypatch, graph, "_layout_positions", "layout")
-        self._wrap_sync(monkeypatch, graph, "_to_node_read", "serialization")
-        self._wrap_sync(monkeypatch, graph, "_resolve_node_ids", "resolve_ids")
+    def install(self, monkeypatch: pytest.MonkeyPatch, event_pipeline=None, graph_service=None) -> None:
+        svc = (event_pipeline.investigation_service if event_pipeline is not None else None)
+        graph = graph_service if graph_service is not None else GraphService
+        if event_pipeline is not None:
+            self._graph = event_pipeline.graph_service
+            self._wrap_async(monkeypatch, svc, "investigate", "investigation")
+            self._wrap_sync(monkeypatch, svc, "_build_context", "build_context")
+            self._wrap_async(monkeypatch, svc, "_deterministic_investigate", "fallback")
+            self._wrap_async(monkeypatch, svc._llm_provider, "investigate", "provider")
+            self._wrap_async(monkeypatch, event_pipeline, "process", "event")
+            self._wrap_sync(
+                monkeypatch, self._graph, "get_neighbor_entities", "graph_queries", on_result=self._note_neighbors
+            )
+            self._wrap_sync(monkeypatch, self._graph, "get_neighbors", "rest_neighbors")
+            self._wrap_sync(monkeypatch, self._graph, "_layout_positions", "layout")
+            self._wrap_sync(monkeypatch, self._graph, "_to_node_read", "serialization")
+            self._wrap_sync(monkeypatch, self._graph, "_resolve_node_ids", "resolve_ids")
+        else:
+            self._wrap_async(monkeypatch, InvestigationService, "investigate", "investigation")
+            self._wrap_async(monkeypatch, EventPipeline, "process", "event")
+            self._wrap_sync(
+                monkeypatch, GraphService, "get_neighbor_entities", "graph_queries", on_result=self._note_neighbors
+            )
 
     def _note_neighbors(self, result: object) -> None:
         if isinstance(result, list):
@@ -146,6 +157,12 @@ class InvestigationProfiler:
         }
 
 
+@pytest.fixture(autouse=True)
+def _login(client: TestClient) -> str:
+    return authenticate(client)
+
+
+
 def _print_profile(count: int, total_s: float, profiler: InvestigationProfiler, *, nodes: int, edges: int) -> None:
     parts = profiler.breakdown()
     growth = profiler.growth()
@@ -201,6 +218,7 @@ def test_investigation_component_profile(
     profiler.install(monkeypatch)
 
     started = time.perf_counter()
+    authenticate(client)
     response = client.post("/api/v1/events/batch", json={"events": _events(count)})
     total_s = time.perf_counter() - started
     assert response.status_code == 200, response.text
@@ -236,7 +254,7 @@ def test_investigation_cost_scales_with_graph_size(monkeypatch: pytest.MonkeyPat
     for size in (10, 100, 500, 1_000):
         graph_service.graph.clear()
         graph_service._applied_event_ids.clear()
-        events = [TelemetryEventRead.model_validate({"id": uuid4(), **row}) for row in payload[:size]]
+        events = [TelemetryEventRead.model_validate({"id": uuid4(), "workspace_id": "test-workspace", **row}) for row in payload[:size]]
         for event in events:
             graph_service.add_telemetry_event(event)
         target = events[-1]
@@ -278,6 +296,7 @@ def test_investigation_result_unchanged_under_profiler(
 ) -> None:
     """Profiler wraps methods only; EventPipeline investigation output must match."""
     _isolate(monkeypatch, ml_mode="heuristic")
+    authenticate(client)
     monkeypatch.setattr("app.api.events.settings.events_batch_use_multi_agent", False)
     payload = _events(3)
 

@@ -59,6 +59,7 @@ class _UnusedRemediationService:
         *,
         reason: str,
         alert_id: UUID,
+        workspace_id: str = "",
     ) -> tuple[RemediationAction, DeviceStateRead]:
         raise RuntimeError("shadow path must not execute remediation")
 
@@ -93,9 +94,11 @@ class ShadowMultiAgentService:
     def graph_mutation_attempts(self) -> int:
         return self._graph.mutation_attempts
 
-    def event_from_create(self, body: TelemetryEventCreate) -> TelemetryEventRead:
+    def event_from_create(self, body: TelemetryEventCreate, *, workspace_id: str) -> TelemetryEventRead:
         """Same mapping used by ``POST /api/v1/events``: Create + generated id."""
-        return TelemetryEventRead.model_validate({"id": uuid4(), **body.model_dump()})
+        return TelemetryEventRead.model_validate(
+            {"id": uuid4(), "workspace_id": workspace_id, **body.model_dump()}
+        )
 
     async def run_shadow_analysis(
         self,

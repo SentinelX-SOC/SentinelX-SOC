@@ -30,6 +30,7 @@ def _event(**overrides: object) -> TelemetryEventRead:
         "user": "alice",
         "event_type": EventType.LATERAL_MOVEMENT,
         "status": EventStatus.FAILURE,
+        "workspace_id": "test-workspace",
     }
     payload.update(overrides)
     return TelemetryEventRead.model_validate(payload)
@@ -61,6 +62,7 @@ def test_investigation_service_generates_structured_advisory() -> None:
             entity="alice",
             status=AlertStatus.OPEN,
             created_at=datetime.now(timezone.utc),
+            workspace_id="test-workspace",
         )
         ml = MLPredictionResponse(
             event_id=str(event.id),
