@@ -300,9 +300,9 @@ function App() {
     <div className={`soc-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <aside className="sidebar">
         <div className="sidebar-header">
-          <div className="brand-mark">OS</div>
+          <div className="brand-mark">SX</div>
           <div className="brand-copy">
-            {!sidebarCollapsed && <><div className="brand-name">Obsidian Sentinel</div><div className="brand-subtitle">SOC Command</div></>}
+            {!sidebarCollapsed && <><div className="brand-name">SentinelX</div><div className="brand-subtitle">SOC Command</div></>}
           </div>
           <button className="icon-btn sidebar-toggle" onClick={() => setSidebarCollapsed((value) => !value)} aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'} title={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}>
             {sidebarCollapsed ? <Menu size={16} /> : <X size={16} />}

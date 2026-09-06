@@ -35,9 +35,9 @@ function takeSearchParam(name: string): string | null {
 function AuthBrand() {
   return (
     <div className="auth-brand">
-      <div className="brand-mark">OS</div>
+      <div className="brand-mark">SX</div>
       <div>
-        <div className="brand-name">Obsidian Sentinel</div>
+        <div className="brand-name">SentinelX</div>
         <div className="brand-subtitle">SOC Command</div>
       </div>
     </div>
@@ -209,7 +209,7 @@ export function AuthGate({ onAuthenticated }: { onAuthenticated: (user: Authenti
 
   const heading = {
     login: { eyebrow: 'Secure access', title: 'Sign in to operations', copy: 'Authenticate to access the live SOC workspace.' },
-    signup: { eyebrow: 'Create account', title: 'Join operations', copy: 'Create an Obsidian Sentinel account with email and password.' },
+    signup: { eyebrow: 'Create account', title: 'Join operations', copy: 'Create a SentinelX account with email and password.' },
     forgot: { eyebrow: 'Account recovery', title: 'Forgot password', copy: 'Enter your email. If an account exists, a reset link will be issued.' },
     reset: { eyebrow: 'Account recovery', title: 'Set a new password', copy: 'Choose a new password, then return to sign in.' },
   }[view];
