@@ -188,6 +188,32 @@ def test_viewer_cannot_approve_review(client: TestClient) -> None:
     assert response.status_code == 403
 
 
+def test_viewer_can_start_simulation(client: TestClient) -> None:
+    _cleanup_users()
+    _seed_user("viewer@example.com", "viewer-password", role=UserRole.VIEWER)
+
+    login = _login(client, "viewer@example.com", "viewer-password")
+    assert login.status_code == 200
+
+    response = client.post(
+        "/api/v1/simulation/start",
+        json={"file_path": "data/auth_sample.txt", "speed_multiplier": 1.0, "limit": 10},
+    )
+    assert response.status_code == 200
+    assert response.json()["state"] == "running"
+
+
+def test_viewer_can_read_simulation_status(client: TestClient) -> None:
+    _cleanup_users()
+    _seed_user("viewer@example.com", "viewer-password", role=UserRole.VIEWER)
+
+    login = _login(client, "viewer@example.com", "viewer-password")
+    assert login.status_code == 200
+
+    response = client.get("/api/v1/simulation/status")
+    assert response.status_code == 200
+
+
 def test_approved_review_records_authenticated_user(client: TestClient) -> None:
     _cleanup_users()
     admin = _seed_user("admin@example.com", "admin-password", role=UserRole.ADMIN)

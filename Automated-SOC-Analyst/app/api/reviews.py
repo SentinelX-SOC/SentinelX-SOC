@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth.schemas import AuthenticatedUser
-from app.core.deps import get_current_user, get_manager, get_review_service
+from app.core.deps import RoleChecker, get_current_user, get_manager, get_review_service
 from app.models.schemas import HumanReviewRead, ReviewDecisionRequest, ReviewStatus
 from app.services.review_service import HumanReviewService
 from app.services.websocket import ConnectionManager
@@ -39,8 +39,6 @@ def _decision_request(
     current_user: AuthenticatedUser,
     body: ReviewDecisionRequest | None = None,
 ) -> HumanReviewRead:
-    if current_user.role not in {"admin", "analyst"}:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Review actions require admin or analyst permissions")
     comment = body.comment if body is not None else None
     try:
         return review_service.decide(
@@ -58,7 +56,7 @@ def _decision_request(
 async def approve_review(
     review_id: str,
     body: ReviewDecisionRequest | None = None,
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(RoleChecker(["analyst"])),
     review_service: HumanReviewService = Depends(get_review_service),
     manager: ConnectionManager = Depends(get_manager),
 ) -> HumanReviewRead:
@@ -81,7 +79,7 @@ async def approve_review(
 async def reject_review(
     review_id: str,
     body: ReviewDecisionRequest | None = None,
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(RoleChecker(["analyst"])),
     review_service: HumanReviewService = Depends(get_review_service),
 ) -> HumanReviewRead:
     return _decision_request(review_service, review_id, ReviewStatus.REJECTED, current_user, body)
@@ -91,7 +89,7 @@ async def reject_review(
 async def escalate_review(
     review_id: str,
     body: ReviewDecisionRequest | None = None,
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(RoleChecker(["analyst"])),
     review_service: HumanReviewService = Depends(get_review_service),
 ) -> HumanReviewRead:
     return _decision_request(review_service, review_id, ReviewStatus.ESCALATED, current_user, body)

@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import re
 import secrets
 import time
@@ -122,7 +123,7 @@ class AuthService:
             email=normalized,
             password_hash=self.hash_password(password),
             display_name=display_name,
-            role=UserRole.VIEWER,
+            role=self.role_for_new_user(normalized),
             is_active=True,
         )
         created = self.repository.create_user(user)
@@ -205,7 +206,7 @@ class AuthService:
                     email=email,
                     password_hash=self.hash_password(secrets.token_urlsafe(48)),
                     display_name=display_name[:255],
-                    role=UserRole.VIEWER,
+                    role=self.role_for_new_user(email),
                     is_active=True,
                 )
             )
@@ -215,6 +216,17 @@ class AuthService:
 
     def google_is_configured(self) -> bool:
         return bool(settings.google_client_id and settings.google_client_secret)
+
+    @staticmethod
+    def role_for_new_user(email: str) -> UserRole:
+        admin_emails = [
+            e.strip().lower()
+            for e in os.getenv("SUPERADMIN_EMAILS", "").split(",")
+            if e.strip()
+        ]
+        if email.strip().lower() in admin_emails:
+            return UserRole.ANALYST
+        return UserRole.VIEWER
 
     @staticmethod
     def normalize_email(email: str) -> str:

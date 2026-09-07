@@ -56,6 +56,13 @@ export type HoneytokenType = 'credential' | 'file' | 'url' | 'canary';
 export type HoneytokenStatus = 'active' | 'triggered' | 'inactive';
 export type SimulationState = 'idle' | 'running' | 'paused' | 'stopped';
 export type DeviceStatus = 'active' | 'isolated';
+export type UserRole = 'viewer' | 'analyst';
+
+export interface User {
+  id: string;
+  email: string;
+  role: UserRole;
+}
 
 export interface TelemetryEventRead {
   id: string;

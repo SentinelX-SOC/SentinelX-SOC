@@ -105,6 +105,8 @@ class ReviewStatus(str, Enum):
 
 
 class UserRole(str, Enum):
+    """Application roles. Self-service accounts are viewer or analyst; admin is bootstrap-only."""
+
     ADMIN = "admin"
     ANALYST = "analyst"
     VIEWER = "viewer"

@@ -14,6 +14,7 @@ import tempfile
 import time
 import tracemalloc
 from collections import defaultdict
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -22,15 +23,19 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from app.auth.service import auth_service
 from app.core import database
 from app.core.database import init_db, reset_database
 from app.core.deps import (
-    event_pipeline,
-    graph_service,
     ml_service,
     multi_agent_service,
+    repository,
 )
+from app.core.workspace_manager import workspace_manager
 from app.repositories.soc_repository import SocRepository
+from app.services.event_pipeline import EventPipeline
+from app.services.graph_service import GraphService
+from app.services.investigation_service import InvestigationService
 from app.models.schemas import (
     EventStatus,
     EventType,
@@ -131,14 +136,16 @@ class Probe:
         self.parts: dict[str, list[float]] = defaultdict(list)
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        self._wrap_async(monkeypatch, event_pipeline, "process", "event")
+        from app.core.deps import detector, manager
+
+        self._wrap_async(monkeypatch, EventPipeline, "process", "event")
         self._wrap_async(monkeypatch, multi_agent_service, "run", "agent")
-        self._wrap_async(monkeypatch, event_pipeline.detector, "score_event", "ml_or_heuristic")
-        self._wrap_sync(monkeypatch, event_pipeline.graph_service, "add_telemetry_event", "graph")
-        self._wrap_sync(monkeypatch, event_pipeline.graph_service, "get_react_flow_graph", "graph_snapshot")
-        self._wrap_sync(monkeypatch, event_pipeline.repository, "persist_pipeline_results", "database")
-        self._wrap_async(monkeypatch, event_pipeline.manager, "broadcast_json", "websocket")
-        self._wrap_async(monkeypatch, event_pipeline.investigation_service, "investigate", "investigation")
+        self._wrap_async(monkeypatch, detector, "score_event", "ml_or_heuristic")
+        self._wrap_sync(monkeypatch, GraphService, "add_telemetry_event", "graph")
+        self._wrap_sync(monkeypatch, GraphService, "get_react_flow_graph", "graph_snapshot")
+        self._wrap_sync(monkeypatch, repository, "persist_pipeline_results", "database")
+        self._wrap_async(monkeypatch, manager, "send_to_workspace", "websocket")
+        self._wrap_async(monkeypatch, InvestigationService, "investigate", "investigation")
 
     def _wrap_async(
         self,
@@ -194,11 +201,13 @@ def _isolate(monkeypatch: pytest.MonkeyPatch, *, ml_mode: str) -> str:
     db_path = Path(raw_path)
     reset_database("sqlite:///" + db_path.as_posix())
     init_db()
-    isolated_repo = SocRepository(session_factory=database.SessionLocal)
-    isolated_repo.pipeline_commit_count = 0
-    monkeypatch.setattr(event_pipeline, "repository", isolated_repo)
-    graph_service.graph.clear()
-    graph_service._applied_event_ids.clear()
+    auth_service.repository.session_factory = database.SessionLocal
+    auth_service.ensure_bootstrap()
+    repository.session_factory = database.SessionLocal
+    repository.pipeline_commit_count = 0
+    auth_service.repository.session_factory = database.SessionLocal
+    auth_service.ensure_bootstrap()
+    workspace_manager.clear()
     if ml_mode == "stub":
         monkeypatch.setattr(ml_service, "predict", _ml_stub)
     elif ml_mode == "heuristic":
@@ -377,11 +386,12 @@ def _run_http_bench(
     if count >= 1_000:
         warm = client.post("/api/v1/events/batch", json={"events": _events(5)})
         assert warm.status_code == 200, warm.text
-        graph_service.graph.clear()
-        graph_service._applied_event_ids.clear()
+        for runtime in list(workspace_manager._runtimes.values()):
+            runtime.graph_service.graph.clear()
+            runtime.graph_service._applied_event_ids.clear()
         probe.event_ms.clear()
         probe.parts.clear()
-        event_pipeline.repository.pipeline_commit_count = 0
+        repository.pipeline_commit_count = 0
     tracemalloc.start()
     cpu_before = time.process_time()
     wall_before = time.perf_counter()
@@ -415,7 +425,7 @@ def _run_http_bench(
         cpu_s=cpu_s,
         mem_kib=peak / 1024.0,
         components=probe.component_totals(),
-        database_commits=event_pipeline.repository.pipeline_commit_count,
+        database_commits=repository.pipeline_commit_count,
     )
 
 
@@ -473,16 +483,16 @@ def test_component_contribution(
     _isolate(monkeypatch, ml_mode="heuristic")
     monkeypatch.setattr("app.api.events.settings.events_batch_use_multi_agent", False)
     if "database" in disable:
-        monkeypatch.setattr(event_pipeline.repository, "persist_pipeline_result", lambda **_k: None)
-        monkeypatch.setattr(event_pipeline.repository, "persist_pipeline_results", lambda _items: None)
+        monkeypatch.setattr(repository, "persist_pipeline_result", lambda **_k: None)
+        monkeypatch.setattr(repository, "persist_pipeline_results", lambda *_items, **_k: None)
     if "graph" in disable:
-        monkeypatch.setattr(event_pipeline.graph_service, "add_telemetry_event", lambda _event: None)
+        monkeypatch.setattr(GraphService, "add_telemetry_event", lambda self, _event: None)
 
-    async def _skip_investigate(**_kwargs: object) -> None:
+    async def _skip_investigate(*_args: object, **_kwargs: object) -> None:
         return None
 
     if "investigation" in disable:
-        monkeypatch.setattr(event_pipeline.investigation_service, "investigate", _skip_investigate)
+        monkeypatch.setattr(InvestigationService, "investigate", _skip_investigate)
     probe = Probe()
     probe.install(monkeypatch)
     started = time.perf_counter()
@@ -534,6 +544,32 @@ def test_live_ml_sample_if_reachable(client: TestClient, monkeypatch: pytest.Mon
         mem_kib=None,
         components=probe.component_totals(),
     )
+
+
+@pytest.mark.skipif(not LOAD_FULL, reason="set SOC_LOAD_TEST=1 to measure persistence batching")
+@pytest.mark.parametrize("count", (100, 1_000))
+@pytest.mark.parametrize("batched", (False, True), ids=("before_per_event_commit", "after_chunk_commit"))
+def test_persistence_batching_isolated_benchmark(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    count: int,
+    batched: bool,
+) -> None:
+    """Same isolated EventPipeline matrix as Step 2, with and without chunk commits."""
+    if not batched:
+        monkeypatch.setattr(EventPipeline, "deferred_persist", lambda self: nullcontext())
+    row = _run_http_bench(
+        client,
+        monkeypatch,
+        count=count,
+        endpoint="POST /events/batch (EventPipeline)",
+        ml_mode="heuristic",
+        use_multi_agent=False,
+    )
+    expected_commits = ((count + CHUNK_SIZE - 1) // CHUNK_SIZE) if batched else count
+    assert row.success == count
+    assert row.database_commits == expected_commits
+    row.workload = f"{count} events {'after' if batched else 'before'}"
 
 
 def test_shadow_analysis_sample(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

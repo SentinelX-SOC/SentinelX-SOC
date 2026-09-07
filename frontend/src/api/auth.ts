@@ -1,11 +1,12 @@
 import { API_BASE_URL, apiRequest } from './client';
+import type { UserRole } from '../types/api';
 
 export interface AuthenticatedUser {
   id?: string;
   username: string;
   email?: string;
   display_name?: string | null;
-  role: 'admin' | 'analyst' | 'viewer';
+  role: UserRole | 'admin';
 }
 
 export interface LoginResponse {

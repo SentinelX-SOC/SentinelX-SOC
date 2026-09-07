@@ -711,6 +711,10 @@ function HoneytokenPanel({ tokens, onDeploy, onTrigger }: { tokens: HoneytokenRe
   );
 }
 
+function ReadOnlyBadge() {
+  return <span className="chip readonly">Read Only</span>;
+}
+
 function SimulationPanel({ simulation, setSimulation }: { simulation: SimulationStatusRead | null; setSimulation: (value: SimulationStatusRead) => void }) {
   const state = simulation?.state ?? 'idle';
   const [error, setError] = useState<string | null>(null);
@@ -755,7 +759,8 @@ function SimulationPanel({ simulation, setSimulation }: { simulation: Simulation
 function ReviewPanel({ reviews, loading, error, onRefresh, onDecision, userRole }: { reviews: HumanReviewRead[]; loading: boolean; error: string | null; onRefresh: () => void; onDecision: (reviewId: string, action: 'approve' | 'reject' | 'escalate', comment?: string) => Promise<void>; userRole?: string; }) {
   const [decisionComment, setDecisionComment] = useState<Record<string, string>>({});
   const [pendingAction, setPendingAction] = useState<Record<string, 'approve' | 'reject' | 'escalate' | null>>({});
-  const canDecide = userRole === 'admin' || userRole === 'analyst';
+  const isViewer = userRole === 'viewer';
+  const canDecide = !isViewer && (userRole === 'admin' || userRole === 'analyst');
 
   return (
     <Panel title="Pending Reviews">
@@ -786,7 +791,7 @@ function ReviewPanel({ reviews, loading, error, onRefresh, onDecision, userRole 
               <div><span className="eyebrow">Evidence / reason</span><p>{review.reason}</p></div>
               <div><span className="eyebrow">Decision summary</span><p>{review.review_comment ?? 'No analyst decision recorded yet.'}</p></div>
             </div>
-            {canDecide && (
+            {canDecide ? (
               <>
                 <label className="review-comment">
                   <span>Analyst comment</span>
@@ -812,8 +817,9 @@ function ReviewPanel({ reviews, loading, error, onRefresh, onDecision, userRole 
                   ))}
                 </div>
               </>
+            ) : (
+              <ReadOnlyBadge />
             )}
-            {!canDecide && <div className="notice neutral">Your {userRole} role cannot perform review actions. Contact an administrator if this is incorrect.</div>}
             {review.reviewed_at ? <div className="review-footer">Decision recorded by {review.reviewed_by ?? 'unknown'} at {new Date(review.reviewed_at).toLocaleString()}</div> : null}
           </div>
         )) : <div className="empty-box">No pending human review items</div>}

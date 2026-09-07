@@ -144,6 +144,33 @@ def test_signup_success_hashes_password_and_creates_session(client: TestClient) 
     assert me.json()["email"] == "ada@example.com"
 
 
+def test_signup_superadmin_email_becomes_analyst(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    _cleanup_auth()
+    monkeypatch.setenv("SUPERADMIN_EMAILS", "boss@example.com, other@example.com")
+    response = client.post(
+        "/api/v1/auth/signup",
+        json=_signup_payload(email="boss@example.com"),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["user"]["role"] == "analyst"
+    stored = auth_service.repository.get_user_by_email("boss@example.com")
+    assert stored is not None
+    assert stored.role == UserRole.ANALYST
+
+
+def test_signup_second_superadmin_email_becomes_analyst(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    _cleanup_auth()
+    monkeypatch.setenv("SUPERADMIN_EMAILS", "boss@example.com, other@example.com")
+    response = client.post(
+        "/api/v1/auth/signup",
+        json=_signup_payload(email="other@example.com"),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["user"]["role"] == "analyst"
+
+
 def test_signup_duplicate_email(client: TestClient) -> None:
     _cleanup_auth()
     assert client.post("/api/v1/auth/signup", json=_signup_payload()).status_code == 201

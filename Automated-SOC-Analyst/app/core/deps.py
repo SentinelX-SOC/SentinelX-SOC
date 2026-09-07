@@ -1,6 +1,6 @@
 """FastAPI dependencies. Graph, pipeline, and simulation are per-workspace."""
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
 
 from app.agents.multi_agent_service import MultiAgentService
 from app.agents.shadow_service import ShadowMultiAgentService
@@ -117,3 +117,22 @@ def get_multi_agent_service() -> MultiAgentService:
 
 def get_shadow_multi_agent_service() -> ShadowMultiAgentService:
     return shadow_multi_agent_service
+
+
+class RoleChecker:
+    """Dependency factory that requires the session user to hold one of ``allowed_roles``.
+
+    Bootstrap ``admin`` users retain write access so existing operator accounts
+    are not locked out of analyst-only mutations.
+    """
+
+    def __init__(self, allowed_roles: list[str]) -> None:
+        self.allowed_roles = allowed_roles
+
+    def __call__(self, user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+        if user.role in self.allowed_roles or user.role == "admin":
+            return user
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )

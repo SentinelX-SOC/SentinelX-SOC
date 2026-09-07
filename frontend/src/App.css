@@ -1414,6 +1414,12 @@ table tbody tr:hover {
   color: var(--on-surface-variant);
 }
 
+.chip.readonly {
+  background: rgba(140, 144, 159, 0.12);
+  border-color: rgba(140, 144, 159, 0.28);
+  color: var(--on-surface-variant);
+}
+
 .row-between {
   display: flex;
   align-items: center;

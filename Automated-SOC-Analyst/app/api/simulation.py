@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth.schemas import AuthenticatedUser
-from app.core.deps import get_current_user, get_workspace_runtime
+from app.core.deps import RoleChecker, get_workspace_runtime
 from app.core.workspace_manager import WorkspaceRuntime
 from app.models.schemas import SimulationStartRequest, SimulationStatusRead
 
@@ -22,7 +22,7 @@ def _status(runtime: WorkspaceRuntime, message: str = "") -> SimulationStatusRea
 async def start_simulation(
     body: SimulationStartRequest,
     runtime: WorkspaceRuntime = Depends(get_workspace_runtime),
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(RoleChecker(["analyst", "viewer"])),
 ) -> SimulationStatusRead:
     try:
         await runtime.engine.start_simulation(
@@ -43,6 +43,7 @@ async def start_simulation(
 @router.post("/pause", response_model=SimulationStatusRead)
 async def pause_simulation(
     runtime: WorkspaceRuntime = Depends(get_workspace_runtime),
+    current_user: AuthenticatedUser = Depends(RoleChecker(["analyst", "viewer"])),
 ) -> SimulationStatusRead:
     runtime.engine.pause()
     return _status(runtime, "paused")
@@ -51,6 +52,7 @@ async def pause_simulation(
 @router.post("/resume", response_model=SimulationStatusRead)
 async def resume_simulation(
     runtime: WorkspaceRuntime = Depends(get_workspace_runtime),
+    current_user: AuthenticatedUser = Depends(RoleChecker(["analyst", "viewer"])),
 ) -> SimulationStatusRead:
     runtime.engine.resume()
     return _status(runtime, "resumed")
@@ -59,6 +61,7 @@ async def resume_simulation(
 @router.post("/stop", response_model=SimulationStatusRead)
 async def stop_simulation(
     runtime: WorkspaceRuntime = Depends(get_workspace_runtime),
+    current_user: AuthenticatedUser = Depends(RoleChecker(["analyst", "viewer"])),
 ) -> SimulationStatusRead:
     runtime.engine.stop()
     return _status(runtime, "stopped")
