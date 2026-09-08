@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     auth_cookie_secure: bool = False
     frontend_url: str = "http://127.0.0.1:5173"
     password_reset_dev_mode: bool = False
-    password_reset_ttl_seconds: int = Field(default=3600, ge=60)
+    password_reset_ttl_seconds: int = Field(default=900, ge=60)  # 15 minutes
     google_client_id: str | None = None
     google_client_secret: str | None = None
     google_redirect_uri: str = "http://127.0.0.1:8000/api/v1/auth/google/callback"

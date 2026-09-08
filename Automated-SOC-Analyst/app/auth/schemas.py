@@ -68,6 +68,10 @@ class PasswordResetRequest(BaseModel):
     email: str = Field(min_length=3, max_length=255)
 
 
+class ForgotPasswordRequest(PasswordResetRequest):
+    """POST /api/auth/forgot-password body."""
+
+
 class PasswordResetConfirmRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -78,6 +82,22 @@ class PasswordResetConfirmRequest(BaseModel):
     @model_validator(mode="after")
     def passwords_match(self) -> "PasswordResetConfirmRequest":
         if self.password != self.confirm_password:
+            raise ValueError("Passwords do not match")
+        return self
+
+
+class ResetPasswordRequest(BaseModel):
+    """POST /api/auth/reset-password body. confirm_password is optional."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=8, max_length=255)
+    password: str = Field(min_length=1, max_length=72)
+    confirm_password: str | None = Field(default=None, min_length=1, max_length=72)
+
+    @model_validator(mode="after")
+    def passwords_match(self) -> "ResetPasswordRequest":
+        if self.confirm_password is not None and self.password != self.confirm_password:
             raise ValueError("Passwords do not match")
         return self
 

@@ -283,6 +283,69 @@ def test_password_reset_dev_mode_returns_local_url(client: TestClient, monkeypat
     assert "reset_token=" in reset_url
 
 
+def test_forgot_password_prints_reset_url_to_logs(
+    client: TestClient, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _cleanup_auth()
+    _seed_user("analyst@example.com", "change-this-development-password")
+    response = client.post("/api/auth/forgot-password", json={"email": "analyst@example.com"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["message"] == RESET_MESSAGE
+    assert "check your server logs" in body["message"]
+    captured = capsys.readouterr()
+    assert "PASSWORD RESET LINK" in captured.out
+    assert "reset_token=" in captured.out
+    assert "analyst@example.com" in captured.out
+    assert "15 minutes" in captured.out
+
+
+def test_forgot_password_unknown_email_is_enumeration_safe(
+    client: TestClient, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _cleanup_auth()
+    response = client.post("/api/auth/forgot-password", json={"email": "missing@example.com"})
+    assert response.status_code == 200
+    assert response.json()["message"] == RESET_MESSAGE
+    captured = capsys.readouterr()
+    assert "PASSWORD RESET LINK" not in captured.out
+    assert "reset_token=" not in captured.out
+
+
+def test_forgot_password_token_expires_in_15_minutes(client: TestClient) -> None:
+    _cleanup_auth()
+    _seed_user("analyst@example.com", "change-this-development-password")
+    assert client.post("/api/auth/forgot-password", json={"email": "analyst@example.com"}).status_code == 200
+    with database.SessionLocal() as session:
+        stored = session.exec(select(PasswordResetToken)).first()
+    assert stored is not None
+    remaining = auth_service._as_utc(stored.expires_at) - utc_now()
+    assert timedelta(minutes=14) < remaining <= timedelta(minutes=15, seconds=5)
+
+
+def test_reset_password_updates_hash_and_invalidates_token(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _cleanup_auth()
+    monkeypatch.setattr(settings, "password_reset_dev_mode", True)
+    _seed_user("analyst@example.com", "old-password-1")
+    requested = client.post("/api/auth/forgot-password", json={"email": "analyst@example.com"})
+    token = _reset_token_from_url(requested.json()["reset_url"])
+
+    confirm = client.post(
+        "/api/auth/reset-password",
+        json={"token": token, "password": "new-password-1"},
+    )
+    assert confirm.status_code == 200
+    assert _login(client, "analyst@example.com", "old-password-1").status_code == 401
+    assert _login(client, "analyst@example.com", "new-password-1").status_code == 200
+    reused = client.post(
+        "/api/auth/reset-password",
+        json={"token": token, "password": "newer-password-1"},
+    )
+    assert reused.status_code == 400
+
+
 def test_password_reset_success_replaces_password(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     _cleanup_auth()
     monkeypatch.setattr(settings, "password_reset_dev_mode", True)

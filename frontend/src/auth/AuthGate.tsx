@@ -167,7 +167,10 @@ export function AuthGate({ onAuthenticated }: { onAuthenticated: (user: Authenti
     setDevResetUrl(null);
     try {
       const result = await requestPasswordReset(email);
-      setSuccess(result.message);
+      setSuccess(
+        result.message ||
+          'If your email is registered, check your server logs for the reset link',
+      );
       if (result.reset_url) {
         setDevResetUrl(result.reset_url);
       }
@@ -210,7 +213,7 @@ export function AuthGate({ onAuthenticated }: { onAuthenticated: (user: Authenti
   const heading = {
     login: { eyebrow: 'Secure access', title: 'Sign in to operations', copy: 'Authenticate to access the live SOC workspace.' },
     signup: { eyebrow: 'Create account', title: 'Join operations', copy: 'Create a SentinelX account with email and password.' },
-    forgot: { eyebrow: 'Account recovery', title: 'Forgot password', copy: 'Enter your email. If an account exists, a reset link will be issued.' },
+    forgot: { eyebrow: 'Account recovery', title: 'Forgot password', copy: 'Enter your email. If it is registered, a reset link will be printed in the server logs.' },
     reset: { eyebrow: 'Account recovery', title: 'Set a new password', copy: 'Choose a new password, then return to sign in.' },
   }[view];
 

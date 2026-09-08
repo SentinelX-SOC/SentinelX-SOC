@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
@@ -24,7 +25,9 @@ from app.repositories.soc_repository import SocRepository
 
 SESSION_COOKIE = "soc_session"
 OAUTH_STATE_COOKIE = "soc_oauth_state"
-RESET_MESSAGE = "If an account exists for that email, a reset link has been issued."
+RESET_MESSAGE = "If your email is registered, check your server logs for the reset link"
+PASSWORD_RESET_TTL = timedelta(minutes=15)
+logger = logging.getLogger(__name__)
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -140,13 +143,16 @@ class AuthService:
         if user is None or not user.is_active:
             return payload
         raw = secrets.token_urlsafe(32)
+        ttl = PASSWORD_RESET_TTL
         self.repository.create_password_reset_token(
             user_id=user.id,
             token_hash=self._hash_token(raw),
-            expires_at=utc_now() + timedelta(seconds=settings.password_reset_ttl_seconds),
+            expires_at=utc_now() + ttl,
         )
+        reset_url = f"{settings.frontend_url.rstrip('/')}/?reset_token={raw}"
+        self._print_reset_url(normalized, reset_url, ttl)
         if settings.password_reset_dev_mode:
-            payload["reset_url"] = f"{settings.frontend_url.rstrip('/')}/?reset_token={raw}"
+            payload["reset_url"] = reset_url
         return payload
 
     def reset_password(self, token: str, password: str) -> bool:
@@ -159,6 +165,19 @@ class AuthService:
         self.repository.mark_password_reset_used(record.id)
         self.repository.update_user_password(record.user_id, self.hash_password(password))
         return True
+
+    @staticmethod
+    def _print_reset_url(email: str, reset_url: str, ttl: timedelta) -> None:
+        minutes = max(1, int(ttl.total_seconds() // 60))
+        banner = (
+            "\n"
+            "================================================================\n"
+            f"PASSWORD RESET LINK for {email} (valid {minutes} minutes)\n"
+            f"{reset_url}\n"
+            "================================================================\n"
+        )
+        print(banner, flush=True)
+        logger.info("Password reset URL for %s (valid %s minutes): %s", email, minutes, reset_url)
 
     def google_authorization_url(self, state: str) -> str:
         params = {

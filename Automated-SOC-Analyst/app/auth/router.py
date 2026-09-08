@@ -9,12 +9,12 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from app.auth.dependencies import get_current_user
 from app.auth.schemas import (
     AuthenticatedUser,
+    ForgotPasswordRequest,
     LoginRequest,
     LoginResponse,
-    PasswordResetConfirmRequest,
     PasswordResetConfirmResponse,
-    PasswordResetRequest,
     PasswordResetRequestResponse,
+    ResetPasswordRequest,
     SignupRequest,
 )
 from app.auth.service import OAUTH_STATE_COOKIE, SESSION_COOKIE, auth_service
@@ -110,14 +110,16 @@ async def signup(body: SignupRequest, response: Response) -> LoginResponse:
     return LoginResponse(user=user)
 
 
+@router.post("/forgot-password", response_model=PasswordResetRequestResponse)
 @router.post("/password-reset/request", response_model=PasswordResetRequestResponse)
-async def request_password_reset(body: PasswordResetRequest) -> PasswordResetRequestResponse:
+async def request_password_reset(body: ForgotPasswordRequest) -> PasswordResetRequestResponse:
     result = auth_service.request_password_reset(body.email)
     return PasswordResetRequestResponse(message=str(result["message"]), reset_url=result.get("reset_url"))
 
 
+@router.post("/reset-password", response_model=PasswordResetConfirmResponse)
 @router.post("/password-reset/confirm", response_model=PasswordResetConfirmResponse)
-async def confirm_password_reset(body: PasswordResetConfirmRequest) -> PasswordResetConfirmResponse:
+async def confirm_password_reset(body: ResetPasswordRequest) -> PasswordResetConfirmResponse:
     try:
         ok = auth_service.reset_password(body.token, body.password)
     except ValueError as exc:

@@ -56,6 +56,7 @@ app.include_router(ingest_router, prefix=settings.api_v1_prefix)
 app.include_router(agent_analysis_router, prefix=settings.api_v1_prefix)
 app.include_router(review_router, prefix=settings.api_v1_prefix)
 app.include_router(auth_router, prefix=settings.api_v1_prefix)
+app.include_router(auth_router, prefix="/api", include_in_schema=False)
 app.include_router(users_router, prefix=settings.api_v1_prefix)
 app.include_router(websocket_router)
 

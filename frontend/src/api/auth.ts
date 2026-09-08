@@ -55,7 +55,7 @@ export async function signup(input: {
 }
 
 export function requestPasswordReset(email: string): Promise<PasswordResetRequestResponse> {
-  return apiRequest<PasswordResetRequestResponse>('/api/v1/auth/password-reset/request', {
+  return apiRequest<PasswordResetRequestResponse>('/api/auth/forgot-password', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
@@ -67,7 +67,7 @@ export function confirmPasswordReset(
   password: string,
   confirmPassword: string,
 ): Promise<PasswordResetConfirmResponse> {
-  return apiRequest<PasswordResetConfirmResponse>('/api/v1/auth/password-reset/confirm', {
+  return apiRequest<PasswordResetConfirmResponse>('/api/auth/reset-password', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

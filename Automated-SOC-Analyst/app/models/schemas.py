@@ -257,7 +257,11 @@ class User(SQLModel, table=True):
 
 
 class PasswordResetToken(SQLModel, table=True):
-    """Single-use password reset token. The raw token is never stored."""
+    """Single-use password reset token. The raw token is never stored.
+
+    Tokens are issued by ``POST /api/auth/forgot-password`` and expire after
+    15 minutes.
+    """
 
     __tablename__ = "password_reset_tokens"
 
