@@ -1,592 +1,433 @@
-# SENTINELX SOC ANALYST
+# SentinelX SOC Analyst
 
-AI-Native Security Operations Center Analyst
+**AI-Native Security Operations Center Platform**
 
-Detect • Investigate • Correlate • Assess • Respond
+Detect · Investigate · Correlate · Contain · Deceive
 
-## Overview
+SentinelX is an enterprise SOC command platform that turns live telemetry into scored alerts, an attack graph, policy-gated remediation, and analyst review — with one isolated SOC workspace per authenticated user.
 
-SentinelX SOC Analyst is an AI-powered Security Operations Center (SOC) platform designed to automate and accelerate the security investigation lifecycle.
+---
 
-Modern SOC teams receive large volumes of security alerts from endpoints, applications, identity systems, network infrastructure, cloud environments, and other security sources. Analysts must manually investigate these alerts, correlate evidence, determine severity, understand attack patterns, and decide what action should be taken.
+## Project Overview & Mission
 
-SentinelX combines automated security event processing, AI-powered threat analysis, multi-agent investigation, evidence correlation, risk assessment, real-time agent execution, security simulation, response recommendations, and human-in-the-loop decision making.
+Security operations teams drown in authentication, endpoint, and network events. SentinelX is built to own that loop end to end:
 
-## Problem
+- Ingest and normalize telemetry (including LANL-style simulation replay).
+- Score each event with an Isolation Forest ML adapter (11-feature contract) and a deterministic heuristic fallback.
+- Persist per-user SOC state: graph, alerts, remediations, honeytokens, and human reviews.
+- Stream results to the analyst UI over a session-authenticated WebSocket.
+- Keep high-impact actions behind granular RBAC and human-in-the-loop review.
 
-Security Operations Centers face alert overload, manual investigation, alert fatigue, slow incident response, and fragmented evidence across logs, identity events, endpoints, networks, threat intelligence, and application telemetry.
+The product goal is not another alert dump. It is an AI-native SOC workstation: *what happened, how severe it is, which assets are on the path, and what the platform already did or is waiting for an analyst to approve.*
 
-SentinelX is designed to bring these investigation steps into a unified AI-assisted workflow.
+---
 
-## Solution
+## Core Contributors
 
-SentinelX acts as an AI SOC Analyst that analyzes security events and coordinates specialized agents to investigate potential threats.
+| Contributor | Role |
+| --- | --- |
+| **Mansi Tyagi** | Core contributor — SOC platform, detection pipeline, and product architecture |
+| **Mansi Singh** | Core contributor — SOC platform, investigation workflows, and product architecture |
 
-The system aims to answer: What happened? Is it suspicious? How serious is it? What evidence supports the conclusion? What should happen next?
+---
 
-## Core Capabilities
+## Key Architectural Features
 
-1. **Security Event Processing** — accepts and structures security events from authentication, endpoint, network, application, cloud, and simulated sources.
+### Multi-user SOC workspaces (1 user → 1 SOC)
 
-2. **Threat Detection** — identifies suspicious authentication, access, privilege, network, process, credential, and lateral-movement signals.
+Each authenticated identity receives a dedicated workspace (`workspace_id = user.id`). Graph, simulation engine, event pipeline, and WebSocket fan-out are constructed per workspace and never share in-memory SOC state with another operator.
 
-3. **Multi-Agent Investigation** — uses specialized detection, investigation, evidence, risk, context, and response responsibilities.
+```text
+User A ── soc_session ──► WorkspaceRuntime(A) ── graph / sim / pipeline / WS room A
+User B ── soc_session ──► WorkspaceRuntime(B) ── graph / sim / pipeline / WS room B
+```
 
-4. **Evidence Analysis** — connects findings to observable evidence.
+### ML threat detection (Isolation Forest, 11-feature contract)
 
-5. **Risk Assessment** — evaluates severity, impact, confidence, affected assets, identity context, attack progression, and investigation findings.
+A standalone ML adapter (`autonomous-threat-defense/ml_service.py`) serves `POST /predict` using scikit-learn Isolation Forest. Fresh inference uses the exact eleven-feature LANL auth contract:
 
-6. **Response Recommendations** — proposes investigation, containment, escalation, evidence collection, or monitoring actions while keeping high-impact actions under appropriate human control.
+1. `total_auth_events`
+2. `successful_auth_count`
+3. `failed_auth_count`
+4. `unique_source_computers`
+5. `unique_destination_computers`
+6. `new_destination_count`
+7. `unique_users`
+8. `new_edge_count`
+9. `outgoing_degree`
+10. `incoming_degree`
+11. `event_rate`
 
-7. **Real-Time Analysis** — communicates agent activity, investigation progress, risk changes, results, recommendations, and pipeline state.
+If the adapter is unreachable, the SOC backend stays up and scores with a deterministic heuristic (`detection_source: "heuristic"`).
 
-8. **Security Simulation** — provides controlled attack scenarios for evaluating detection, investigation, risk scoring, agent behavior, evidence, and response recommendations.
+### Autonomous remediation pipeline
+
+`EventPipeline` owns the production path: persist telemetry → ML/heuristic score → graph mutation → investigation → policy → optional simulated remediation → human review when risk is high → workspace WebSocket broadcast. Isolate / block / disable actions are policy-gated. Analysts approve, reject, or escalate from the Human Review queue.
+
+### Enterprise attack graph
+
+Live NetworkX graph exported as React Flow payloads. The UI kill-chain map classifies entities as **Entry Point**, **Internal Server**, and **Crown Jewel**, with compromised (red pulse), defended (green), and blocked-vector (cleared path) states. The canvas uses dual-axis `overflow: auto` and sizes the SVG from node coordinates so operators can pan **223+ nodes / 207+ edges** without clipping.
+
+### Granular RBAC
+
+Persistent roles: `admin`, `analyst`, `viewer`.
+
+- **Viewer** — authenticate, observe, start/pause simulation, inspect graph and telemetry.
+- **Analyst** — operate detection workflows and human-review decisions.
+- **Admin** — user lifecycle (`/api/v1/users`), role/status changes, full operator access.
+
+HttpOnly `soc_session` cookies, credential versioning (password reset invalidates sessions), and Google OAuth authorization-code login.
+
+### Honeytoken deception layer
+
+Deploy credential, file, URL, or canary decoys. Triggers are a high-confidence local path (not the generic ML pipeline): graph edges, scored events, optional containment, and live UI updates.
+
+### Additional platform strengths
+
+- Email/password signup with bcrypt hashing and 15-minute password-reset tokens (reset URL printed to server logs for local testing without SMTP).
+- Google Sign-In with first-party HTML callback so cross-site cookies survive the OAuth bounce.
+- Batch ingest and simulation replay through the same pipeline as live events.
+- Shadow multi-agent analysis (`POST /api/v1/agent-analysis`) that never mutates production graph or remediations.
+- SQLite by default for local/dev; Postgres-ready SQLModel persistence.
+
+---
 
 ## System Architecture
 
 ```text
-Security Sources
-      ↓
-Event Ingestion
-(Parse • Normalize • Validate • Enrich)
-      ↓
-Detection Layer
-(Rules • ML • AI)
-      ↓
-Agentic SOC Layer
-      ├── Detection Agent
-      ├── Investigation Agent
-      ├── Evidence Agent
-      ├── Risk Agent
-      └── Response Agent
-      ↓
-Decision / Triage
-      ↓
-SentinelX SOC Analyst UI
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         SentinelX SOC Analyst UI                         │
+│  React 19 + TypeScript + Vite  (Overview, Graph, Telemetry, Reviews,     │
+│  Honeytokens, Simulation, Health)                                        │
+│  cookie: soc_session   REST /api/v1/*   WebSocket /ws                    │
+└───────────────┬──────────────────────────────────────┬───────────────────┘
+                │ HTTPS / HTTP                         │ WS
+                ▼                                      ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│                     FastAPI  (Automated-SOC-Analyst)                      │
+│  Auth  ·  Events  ·  Ingest  ·  Graph  ·  Simulation  ·  Reviews          │
+│  Honeytokens  ·  Users  ·  Agent Analysis  ·  Health                      │
+│                                                                           │
+│  WorkspaceManager ──► WorkspaceRuntime (per user.id)                      │
+│       ├── EventPipeline                                                   │
+│       ├── GraphService (NetworkX)                                         │
+│       └── SimulationEngine                                                │
+│                                                                           │
+│  SQLModel repository  ·  PolicyService  ·  RemediationService             │
+│  HumanReviewService  ·  HoneytokenService  ·  ConnectionManager           │
+└───────────────┬──────────────────────────────────────┬────────────────────┘
+                │ POST /predict                        │ persist
+                ▼                                      ▼
+┌─────────────────────────────┐          ┌─────────────────────────────┐
+│  ML adapter :9000           │          │  SQLite / Postgres          │
+│  Isolation Forest           │          │  users, telemetry, alerts,  │
+│  11-feature LANL contract   │          │  graph, reviews, tokens     │
+└─────────────────────────────┘          └─────────────────────────────┘
 ```
 
-## Agent Architecture
+---
 
-**Detection Agent** — identifies suspicious activity and determines whether deeper investigation is required.
-
-**Investigation Agent** — analyzes event context, related activity, identity/entity information, temporal relationships, indicators, and attack progression.
-
-**Evidence Analysis Agent** — correlates observable evidence supporting the investigation.
-
-**Risk Assessment Agent** — converts investigation findings into a security priority.
-
-**Response Agent** — generates recommended next steps. Sensitive or high-impact actions remain subject to appropriate authorization and human oversight.
-
-## End-to-End Data Flow
-
-1. Security Event
-2. Event Validation
-3. Normalization
-4. Threat Detection
-5. Investigation
-6. Evidence Collection
-7. Risk Assessment
-8. Response Recommendation
-9. SOC Analyst Review
-
-## Example Investigation
-
-Example suspicious login:
+## End-to-End Technical Flow
 
 ```text
-User: analyst@example.com
-Source IP: Unknown
-Location: Unusual
-Time: 03:14 AM
-Authentication: Successful
+                    ┌──────────────┐
+                    │  Operator    │
+                    │  signs in    │
+                    └──────┬───────┘
+                           │ POST /api/v1/auth/login  (or Google OAuth)
+                           ▼
+                 HttpOnly soc_session  +  workspace_id = user.id
+                           │
+           ┌───────────────┼────────────────┐
+           ▼               ▼                ▼
+     REST /api/v1/*     GET /              WS /ws
+     (cookie auth)      health             (cookie 1008 if invalid)
+           │                                │
+           ▼                                ▼
+   get_workspace_runtime()          manager.connect(workspace_id)
+           │
+           ▼
+   Telemetry  (simulation replay, POST /events, POST /ingest, honeytoken trap)
+           │
+           ▼
+   EventPipeline.process()
+           │
+           ├─► MLService.predict() ── Isolation Forest (11 features)
+           │         └─ fallback AnomalyDetector heuristic
+           ├─► GraphService.add_telemetry_event()
+           ├─► InvestigationService (advisory)
+           ├─► PolicyService (allowed / isolate / notify)
+           ├─► RemediationService (simulated containment)
+           ├─► HumanReviewService  if risk > 50
+           └─► ConnectionManager.send_to_workspace()
+                     │
+                     ├── type: telemetry
+                     ├── type: alert
+                     ├── type: graph
+                     ├── type: remediation_executed
+                     └── type: honeytoken_triggered
+                           │
+                           ▼
+              Attack Graph + Telemetry inspector
+              (Entry Point → Internal Server → Crown Jewel)
 ```
 
+Example high-risk path:
+
 ```text
-Authentication Event
-      ↓
-Detection Agent
-      ↓
-Unusual login detected
-      ↓
-Investigation Agent
-      ↓
-Related authentication activity
-      ↓
-Evidence Analysis
-      ↓
-Multiple failed attempts followed by success
-      ↓
-Risk Assessment
-      ↓
-High Risk
-      ↓
-Response Recommendation
-      ↓
-Investigate account / revoke session / escalate
+U001 @ 10.0.0.25  --login/failure-->  server-03
+        │
+        ▼
+ Isolation Forest  →  risk 86  →  alert OPEN
+        │
+        ▼
+ Graph: user:U001 ──authenticated_to──► host:server-03
+        │
+        ▼
+ Policy: isolate_device  →  Human Review (pending)
+        │
+        ▼
+ Analyst approve  →  device isolated  →  WS remediation_executed
+        │
+        ▼
+ UI node turns green (defended); attack edge renders as cleared path
 ```
 
-## Technology Stack
+---
 
-**Frontend:** React, TypeScript, Rsbuild, RocketRide application SDK
+## Tech Stack
 
-**Backend:** Python, FastAPI, REST APIs, WebSocket communication
+| Layer | Technology |
+| --- | --- |
+| SOC UI | React 19, TypeScript, Vite 8, lucide-react |
+| API | Python, FastAPI, Uvicorn, Pydantic v2, SQLModel |
+| Auth | bcrypt sessions, Google OAuth 2.0, RBAC (`admin` / `analyst` / `viewer`) |
+| Graph | NetworkX, React Flow-compatible JSON, dual-axis SVG canvas |
+| ML | scikit-learn Isolation Forest, joblib artifacts, httpx client |
+| Realtime | FastAPI WebSocket `/ws`, per-workspace ConnectionManager |
+| Data | SQLite (default), PostgreSQL-ready |
+| Hosting | Railway (API + Vite preview `allowedHosts`) |
+| Tests | pytest, FastAPI TestClient |
 
-**AI / ML:** Large Language Models, AI agents, ML-based analysis, agent orchestration, structured AI outputs
+---
 
-**Runtime:** RocketRide, RocketRide Cloud, RocketRide pipelines, WebSocket-based runtime communication
-
-**Development:** VS Code, Git, GitHub, GitHub Copilot, pnpm, Python virtual environments
-
-## RocketRide Integration
-
-RocketRide provides the AI and agent execution layer for the SentinelX architecture.
-
-```text
-SentinelX Application
-      ↓
-RocketRide SDK
-      ↓
-RocketRide Runtime
-      ↓
-Detection / Investigation / Response Pipelines
-      ↓
-Agent Results
-      ↓
-SentinelX SOC UI
-```
-
-RocketRide pipelines provide a modular way to represent AI workflows and execute them through the RocketRide runtime.
-
-## Application Structure
+## Repository Layout
 
 ```text
-SentinelX-SOC/
-├── apps/
-│   └── soc-analyst-ui/
-│       ├── src/
-│       ├── package.json
-│       └── README.md
-├── Automated-SOC-Analyst/
+hackathon/
+├── README.md                          ← this document
+├── Automated-SOC-Analyst/             ← FastAPI SOC backend
+│   ├── main.py                        ← app factory, CORS, routers
+│   ├── start-local.ps1                ← ML adapter + API launcher
+│   ├── requirements.txt
 │   ├── app/
-│   │   ├── agents/
-│   │   ├── auth/
-│   │   ├── core/
-│   │   └── services/
-│   ├── tests/
-│   ├── main.py
-│   └── requirements.txt
-├── autonomous-threat-defense/
-├── frontend/
-├── .rocketride/
-├── pnpm-workspace.yaml
-└── README.md
+│   │   ├── api/                       ← REST + WebSocket routers
+│   │   ├── auth/                      ← login, OAuth, password reset
+│   │   ├── agents/                    ← detection → threat → decision
+│   │   ├── core/                      ← config, workspace manager, deps
+│   │   ├── models/                    ← SQLModel + Pydantic schemas
+│   │   ├── repositories/
+│   │   ├── services/                  ← pipeline, graph, policy, ML client
+│   │   └── simulation/                ← LANL replay engine
+│   └── tests/
+├── autonomous-threat-defense/         ← Isolation Forest ML adapter
+│   ├── ml_service.py                  ← :9000 /health /predict
+│   └── src/features.py                ← 11-feature contract
+└── frontend/                          ← SentinelX SOC Command UI
+    ├── src/App.tsx
+    ├── src/components/AttackGraph.tsx
+    └── src/auth/AuthGate.tsx
 ```
 
-## Component Responsibilities
+---
 
-- **apps/soc-analyst-ui** — RocketRide SentinelX application interface
-- **frontend** — frontend application components
-- **Automated-SOC-Analyst** — core SOC backend and agent services
-- **app/agents** — AI and agent investigation logic
-- **app/auth** — authentication and authorization
-- **app/services** — supporting SOC services
-- **autonomous-threat-defense** — threat-defense functionality
-- **.rocketride** — RocketRide SDK, runtime, and development resources
+## Quick Start
 
-## Local Development
+### Prerequisites
 
-Requirements:
+- Python 3.11+
+- Node.js 20+
+- npm
 
-- Node.js
-- pnpm
-- Python 3.10+
-- VS Code
-- RocketRide VS Code extension
-
-Clone:
-
-```bash
-git clone <REPOSITORY_URL>
-cd SentinelX-SOC
-```
-
-Install:
-
-```bash
-pnpm install
-```
-
-Python environment:
-
-```bash
-cd Automated-SOC-Analyst
-python -m venv .venv
-```
-
-Windows:
+### 1. Backend
 
 ```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-Dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-## Environment Configuration
-
-Create a local `.env` file.
-
-Example:
-
-```env
-API_V1_PREFIX=/api/v1
-ROCKETRIDE_URI=
-ROCKETRIDE_APIKEY=
-OPENAI_API_KEY=
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-GOOGLE_REDIRECT_URI=
-```
-
-Never commit secrets to GitHub. Keep only variable names and safe placeholders in `.env.example`.
-
-## Running the Application
-
-Backend:
-
-```bash
 cd Automated-SOC-Analyst
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env
 ```
 
-Start the development server using the project's configured startup command.
+Edit `.env` at minimum: `SECRET_KEY`, `AUTH_DEV_PASSWORD`, `FRONTEND_URL=http://127.0.0.1:5173`.
 
-Frontend:
+Start the API (port **8000**):
 
-```bash
-pnpm dev
+```powershell
+python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-RocketRide pipelines can be opened, run, inspected, and debugged using the RocketRide VS Code extension.
+Health: [http://127.0.0.1:8000/](http://127.0.0.1:8000/)
 
-## API Architecture
+Optional: launch ML adapter + backend together (requires processed Isolation Forest artifacts):
 
-The backend exposes versioned routes under `/api/v1`.
-
-Major API areas include:
-
-- `/api/v1/auth`
-- `/api/v1/events`
-- `/api/v1/ingest`
-- `/api/v1/simulation`
-- `/api/v1/graph`
-- `/api/v1/honeytokens`
-- `/api/v1/agent-analysis`
-- `/api/v1/review`
-- `/api/v1/users`
-
-The API layer bridges the SentinelX interface, SOC services, investigation workflows, and runtime components.
-
-## Authentication
-
-SentinelX includes application authentication and Google OAuth.
-
-```text
-User → SentinelX Login → Google OAuth → Authorization → OAuth Callback → Backend Validation → Session → Authenticated SOC UI
+```powershell
+.\start-local.ps1
 ```
 
-Google OAuth callback:
+ML health: [http://127.0.0.1:9000/health](http://127.0.0.1:9000/health)
 
-```text
-/api/v1/auth/google/callback
+### 2. ML adapter (optional, recommended)
+
+```powershell
+cd autonomous-threat-defense
+pip install -r requirements.txt
+python -m uvicorn ml_service:app --host 127.0.0.1 --port 9000
 ```
 
-The production callback URL must exactly match the redirect URI configured with the OAuth provider.
+Without the adapter, the SOC API still serves events using heuristic detection.
+
+### 3. Frontend
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+UI: [http://127.0.0.1:5173/](http://127.0.0.1:5173/)
+
+Bootstrap admin (when `AUTH_BOOTSTRAP_ENABLED=true`):
+
+- Email: `admin@example.com`
+- Password: value of `AUTH_DEV_PASSWORD` / `AUTH_BOOTSTRAP_PASSWORD`
+
+Sign in, open **Simulation**, start replay (`data/auth_sample.txt`), then open **Attack Graph** to watch the kill-chain populate over WebSocket.
+
+### 4. Tests
+
+```powershell
+cd Automated-SOC-Analyst
+python -m pytest -q
+```
+
+---
+
+## API Structure
+
+All versioned REST routes hang off `settings.api_v1_prefix` (`/api/v1`). Auth aliases also exist at `/api/auth/*` (forgot/reset password). Session cookie: `soc_session`.
+
+| Area | Methods | Path |
+| --- | --- | --- |
+| Health | `GET` | `/` |
+| Auth | `POST` | `/api/v1/auth/signup` |
+| | `POST` | `/api/v1/auth/login` |
+| | `GET` | `/api/v1/auth/me` |
+| | `POST` | `/api/v1/auth/logout` |
+| | `GET` | `/api/v1/auth/google/start` |
+| | `GET` | `/api/v1/auth/google/callback` |
+| | `POST` | `/api/auth/forgot-password` |
+| | `POST` | `/api/auth/reset-password` |
+| Users (admin) | `GET` `POST` | `/api/v1/users` |
+| | `PATCH` | `/api/v1/users/{id}/role` |
+| | `PATCH` | `/api/v1/users/{id}/status` |
+| Events | `POST` | `/api/v1/events` |
+| | `POST` | `/api/v1/events/batch` |
+| Ingest | `POST` | `/api/v1/ingest` |
+| Simulation | `POST` | `/api/v1/simulation/start` |
+| | `POST` | `/api/v1/simulation/pause` |
+| | `POST` | `/api/v1/simulation/resume` |
+| | `POST` | `/api/v1/simulation/stop` |
+| | `GET` | `/api/v1/simulation/status` |
+| Graph | `GET` | `/api/v1/graph/` |
+| | `GET` | `/api/v1/graph/neighbors/{entity_id}` |
+| Honeytokens | `POST` | `/api/v1/honeytokens/deploy` |
+| | `GET` | `/api/v1/honeytokens` |
+| | `POST` | `/api/v1/honeytokens/{id}/trigger` |
+| | `GET` | `/api/v1/honeytokens/{id}/events` |
+| Reviews | `GET` | `/api/v1/reviews` |
+| | `POST` | `/api/v1/reviews/{id}/approve` |
+| | `POST` | `/api/v1/reviews/{id}/reject` |
+| | `POST` | `/api/v1/reviews/{id}/escalate` |
+| Agent analysis | `POST` | `/api/v1/agent-analysis` |
+| WebSocket | | `/ws` |
+
+Interactive OpenAPI: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+Single-event ingest example:
+
+```json
+{
+  "timestamp": "2026-08-27T12:00:00Z",
+  "source": "10.0.0.25",
+  "destination": "server-03",
+  "user": "U001",
+  "event_type": "lateral_movement",
+  "status": "failure"
+}
+```
+
+`POST /api/v1/events` returns `EventPipelineResult`: event, `detection_source` (`ml` \| `heuristic` \| `honeytoken`), risk, ML scores, alert, investigation, policy, remediation, optional review.
+
+---
 
 ## WebSocket Architecture
 
 ```text
-SOC UI
-  │
-  │ WebSocket
-  ▼
-SentinelX WebSocket Layer
-  ├── Agent Events
-  ├── Investigation Updates
-  ├── Risk Updates
-  └── Pipeline State
-  │
-  ▼
-SOC Dashboard
+Browser  ── cookie soc_session ──►  GET ws://127.0.0.1:8000/ws
+                                         │
+                         missing / invalid cookie → close 1008
+                                         │
+                         workspace_id = authenticated user.id
+                                         ▼
+                              ConnectionManager
+                                         │
+                    send_to_workspace(workspace_id, payload)
+                                         │
+         ┌───────────┬───────────┬──────────────┬─────────────────┐
+         ▼           ▼           ▼              ▼                 ▼
+     telemetry     alert       graph    remediation_executed  honeytoken_triggered
 ```
 
-This supports real-time updates for long-running investigations and agent workflows.
+Client notes:
 
-## Simulation Architecture
+- URL from `VITE_WS_URL` or `VITE_API_BASE_URL` with `http` → `ws`.
+- Credentials included (`withCredentials` equivalent).
+- Exponential reconnect unless the server closes with policy violation `1008` (session invalid → sign-out).
+- Graph snapshots replace client graph state; telemetry prepends the live event rail.
+
+---
+
+## Authentication & Session Model
 
 ```text
-Simulation Scenario
-      ↓
-Synthetic Security Event
-      ↓
-Event Processing
-      ↓
-Detection
-      ↓
-Agent Investigation
-      ↓
-Evidence
-      ↓
-Risk Assessment
-      ↓
-Response Recommendation
-      ↓
-SOC Dashboard
+Email/password  or  Google authorization-code
+        │
+        ▼
+signed soc_session cookie  (HttpOnly, Lax or None+Secure)
+        │
+        ├── REST Depends(get_current_user)
+        ├── WebSocket handshake
+        └── workspace_id isolation
 ```
 
-## Testing
+Password reset (local, no SMTP): `POST /api/auth/forgot-password` issues a 15-minute hashed token and **prints the reset URL in the API terminal**. `POST /api/auth/reset-password` updates the bcrypt hash, increments `credentials_version`, and invalidates existing sessions.
 
-- **Unit Tests** — test individual services, agents, and utilities.
-- **Integration Tests** — verify event ingestion, agent services, APIs, WebSocket connections, and runtime components.
-- **Pipeline Tests** — validate RocketRide pipelines with representative SOC events.
-- **Simulation Tests** — run controlled attack scenarios across the complete investigation workflow.
+---
 
-## Security Model
+## Security Notes
 
-- **Secrets** — credentials and API keys must use environment variables or secure secret management.
-- **Input Validation** — incoming security events should be validated before processing.
-- **AI Output Validation** — AI-generated outputs should be treated as untrusted data and validated before security-sensitive use.
-- **Human Oversight** — high-impact actions should require appropriate authorization.
-- **Auditability** — security-relevant actions and investigation results should be logged where appropriate.
+- Never commit `.env`, Google client secrets, or bootstrap passwords.
+- Production: set a strong `SECRET_KEY`, `AUTH_COOKIE_SECURE=true`, and `PASSWORD_RESET_DEV_MODE=false`.
+- High-impact containment stays behind policy + human review.
+- `/api/v1/dev/*` is development/test only.
 
-## Deployment Architecture
+---
 
-Development:
+## Why SentinelX
 
-```text
-Developer
-   ↓
-VS Code
-   ├── SentinelX UI
-   ├── Python Services
-   └── RocketRide Pipelines
-             ↓
-       Local Runtime
-```
+Traditional tools stop at “this alert looks bad.” SentinelX is built to finish the sentence:
 
-Target RocketRide Cloud:
-
-```text
-RocketRide Cloud
-      ↓
-SentinelX Pipelines
-      ├── Detection
-      ├── Investigation
-      └── Response
-      ↓
-Agent Results
-      ↓
-SentinelX UI
-```
-
-Railway may be used as a personal development or testing environment, but it is not intended to be the target production runtime for the RocketRide-based SentinelX deployment.
-
-## Deployment Workflow
-
-```text
-Development
-     ↓
-Local Testing
-     ↓
-RocketRide Pipeline Validation
-     ↓
-Build
-     ↓
-Deploy
-     ↓
-RocketRide Cloud
-     ↓
-Staging
-     ↓
-Production Release
-```
-
-## Versioning and Updates
-
-```text
-Code Change
-    ↓
-Local Testing
-    ↓
-Pipeline Validation
-    ↓
-Build
-    ↓
-Deploy New Version
-    ↓
-RocketRide Cloud
-    ↓
-Publish / Release
-```
-
-A new deployment represents a new application or pipeline version, allowing new versions to be tested before release.
-
-## CI/CD Direction
-
-```text
-Git Push
-   ↓
-Automated Tests
-   ↓
-Build
-   ↓
-Pipeline Validation
-   ↓
-RocketRide Deployment
-   ↓
-Staging
-   ↓
-Production Release
-```
-
-The repository structure is intended to support this workflow as the RocketRide deployment process matures.
-
-## Development Principles
-
-- **Modular Agents** — agents have clearly defined responsibilities.
-- **Evidence-Based Results** — conclusions are supported by observable evidence.
-- **Explainable Analysis** — analysts can understand why an event was classified as risky.
-- **Human-in-the-Loop** — AI assists analysts rather than blindly executing sensitive actions.
-- **Real-Time Feedback** — the SOC interface provides visibility into investigations.
-- **Extensibility** — new agents, data sources, detection methods, and response actions can be added modularly.
-- **Secure by Design** — secrets, authentication, authorization, validation, and high-impact actions are handled carefully.
-
-## Current Status
-
-**Application**
-
-- [x] SOC Analyst interface
-- [x] Security event processing
-- [x] Authentication foundation
-- [x] Risk assessment workflow
-- [x] Agent-based analysis
-- [x] Simulation environment
-- [x] Real-time communication infrastructure
-- [x] RocketRide application foundation
-
-**RocketRide**
-
-- [x] RocketRide application structure
-- [x] RocketRide app manifest
-- [x] RocketRide SDK integration
-- [ ] Complete production pipeline migration
-- [ ] Full RocketRide Cloud deployment
-- [ ] Production pipeline verification
-
-## Roadmap
-
-**Phase 1 — Foundation**
-
-- Security event ingestion
-- SOC interface
-- Agent framework
-- Risk assessment
-- Simulation
-
-**Phase 2 — Agentic SOC**
-
-- Specialized investigation agents
-- Evidence correlation
-- Multi-agent orchestration
-- Response recommendations
-
-**Phase 3 — RocketRide**
-
-- Convert core AI workflows into RocketRide pipelines
-- Local pipeline testing
-- Runtime integration
-- Cloud deployment
-- Versioned releases
-
-**Phase 4 — Advanced SOC**
-
-- Threat intelligence
-- Attack-chain reconstruction
-- Advanced correlation
-- Automated playbooks
-- Controlled autonomous response
-
-**Phase 5 — Production**
-
-- Enterprise authentication
-- Role-based access control
-- Audit logging
-- Observability
-- CI/CD
-- Production monitoring
-- Scalable multi-tenant architecture
-
-## Why SentinelX?
-
-Traditional security tools often stop at: “This alert is suspicious.”
-
-SentinelX is designed to go further:
-
-“This event is suspicious.
-Here is what happened.
-Here is the evidence.
-Here is why it matters.
-Here is the assessed risk.
-Here is what the SOC analyst should investigate next.”
-
-The goal is to transform security operations from alert management into AI-assisted investigation and decision support.
-
-## Project Goals
-
-1. Reduce the manual workload of SOC analysts.
-2. Improve investigation speed.
-3. Prioritize important security events.
-4. Correlate evidence automatically.
-5. Provide explainable investigation results.
-6. Enable multi-agent security workflows.
-7. Support real-time SOC operations.
-8. Provide a foundation for controlled autonomous response.
-
-## Contributing
-
-Contributions are welcome.
-
-Recommended workflow:
-Fork → Create Feature Branch → Implement Change → Run Tests → Open Pull Request
-
-Example:
-
-```bash
-git checkout -b feature/new-detection-agent
-```
-
-Keep changes modular and include tests for new functionality where appropriate.
-
-## Security Issues
-
-Do not publicly disclose security vulnerabilities through regular GitHub issues. Use the repository's security reporting mechanism or contact project maintainers privately.
-
-## License
-
-MIT License
-
-See LICENSE for details.
-
-## Acknowledgements
-
-SentinelX is built using open-source technologies and AI infrastructure including React, TypeScript, Python, FastAPI, RocketRide, and AI/LLM technologies.
-
-## Team
-
-SentinelX
-
-AI-powered security analysis for the next generation of Security Operations Centers.
+> This event is suspicious. Here is the scored risk. Here is the attack path (entry → internal → crown jewel). Here is the affected service. Here is the policy decision. Here is the review queue. Here is the live graph — isolated to *your* SOC workspace.
 
 Detect. Investigate. Understand. Respond.
