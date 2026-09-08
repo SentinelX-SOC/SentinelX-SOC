@@ -369,6 +369,7 @@ class GraphService:
         event: TelemetryEventRead,
     ) -> None:
         risk_delta = _event_risk(event)
+        defended = event.status is EventStatus.BLOCKED
         if not self.graph.has_node(node_id):
             self.graph.add_node(
                 node_id,
@@ -378,6 +379,7 @@ class GraphService:
                 risk_score=risk_delta,
                 event_count=1,
                 last_seen=event.timestamp.isoformat(),
+                defended=defended,
             )
             return
 
@@ -385,6 +387,8 @@ class GraphService:
         data["event_count"] = int(data.get("event_count", 0)) + 1
         data["last_seen"] = event.timestamp.isoformat()
         data["risk_score"] = min(100.0, float(data.get("risk_score", 0.0)) + risk_delta)
+        if defended:
+            data["defended"] = True
         existing = data.get("entity_type", GraphNodeType.COMPUTER)
         if existing is GraphNodeType.COMPUTER and node_type is GraphNodeType.SERVER:
             data["entity_type"] = GraphNodeType.SERVER
@@ -400,11 +404,13 @@ class GraphService:
             return
 
         failed = event.status is EventStatus.FAILURE or event.event_type is EventType.AUTH_FAILURE
+        blocked = event.status is EventStatus.BLOCKED
         if self.graph.has_edge(source_id, target_id):
             data = self.graph.edges[source_id, target_id]
             data["weight"] = float(data.get("weight", 1.0)) + 1.0
             data["last_seen"] = event.timestamp.isoformat()
             data["failed"] = bool(data.get("failed", False)) or failed
+            data["blocked"] = bool(data.get("blocked", False)) or blocked
             types: list[str] = list(data.get("types", [data["edge_type"].value]))
             if edge_type.value not in types:
                 types.append(edge_type.value)
@@ -418,6 +424,7 @@ class GraphService:
             types=[edge_type.value],
             weight=1.0,
             failed=failed,
+            blocked=blocked,
             last_seen=event.timestamp.isoformat(),
             event_id=str(event.id),
         )
@@ -477,6 +484,8 @@ class GraphService:
                     properties={
                         "event_count": int(data.get("event_count", 0)),
                         "last_seen": data.get("last_seen"),
+                        "attack_role": _attack_role(node_type, entity),
+                        "defended": bool(data.get("defended", False)),
                     },
                 ),
                 "workspace_id": self.workspace_id,
@@ -494,6 +503,7 @@ class GraphService:
             edge_type = GraphEdgeType(str(edge_type))
         weight = float(data.get("weight", 1.0))
         failed = bool(data.get("failed", False))
+        blocked = bool(data.get("blocked", False))
         return GraphEdgeRead.model_validate(
             {
                 "id": f"{source_id}->{target_id}:{edge_type.value}",
@@ -501,12 +511,13 @@ class GraphService:
                 "target": target_id,
                 "type": edge_type.value,
                 "label": edge_type.value.replace("_", " ").title(),
-                "animated": failed or weight > 1.0,
+                "animated": (failed or weight > 1.0) and not blocked,
                 "data": GraphEdgeData(
                     edge_type=edge_type,
                     weight=weight,
                     properties={
                         "failed": failed,
+                        "blocked": blocked,
                         "last_seen": data.get("last_seen"),
                         "types": data.get("types", [edge_type.value]),
                     },
@@ -538,7 +549,18 @@ def _classify_host(
     return GraphNodeType.COMPUTER
 
 
+def _attack_role(node_type: GraphNodeType, entity: str) -> str:
+    upper = entity.upper()
+    if node_type is GraphNodeType.SERVER and any(marker in upper for marker in ("DC", "AD", "EXCH", "MAIL", "DB")):
+        return "crown_jewel"
+    if node_type is GraphNodeType.SERVER or any(marker in upper for marker in _SERVER_MARKERS):
+        return "internal_server"
+    return "entry_point"
+
+
 def _event_risk(event: TelemetryEventRead) -> float:
+    if event.status is EventStatus.BLOCKED:
+        return 0.0
     if event.event_type in {
         EventType.LATERAL_MOVEMENT,
         EventType.DATA_EXFILTRATION,

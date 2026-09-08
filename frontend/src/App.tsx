@@ -32,18 +32,17 @@ import { AuthGate } from './auth/AuthGate';
 import { resolveWebSocketUrl } from './api/client';
 import { ingestEvent } from './api/events';
 import { getHealth } from './api/health';
-import { getGraph, getGraphNeighbors } from './api/graph';
+import { getGraph } from './api/graph';
 import { deployHoneytoken, listHoneytokenEvents, listHoneytokens, triggerHoneytoken } from './api/honeytokens';
 import { decideReview, listReviews } from './api/reviews';
 import { getSimulationStatus, pauseSimulation, resumeSimulation, startSimulation, stopSimulation } from './api/simulation';
 import { SocWebSocket } from './api/websocket';
-import type { AlertRead, EventPipelineResult, GraphRead, HealthRead, HoneytokenEventRead, HoneytokenRead, HumanReviewRead, SimulationStatusRead, TelemetryEventCreate, TelemetryEventRead } from './types/api';
+import { AttackGraph, AttackGraphPreview } from './components/AttackGraph';
+import type { AlertRead, EventPipelineResult, GraphRead, HealthRead, HoneytokenEventRead, HoneytokenRead, HumanReviewRead, LiveEvent, RealtimeRemediation, SimulationStatusRead, TelemetryEventCreate, TelemetryEventRead } from './types/api';
 
 type Screen = 'overview' | 'telemetry' | 'graph' | 'honeytokens' | 'simulation' | 'health' | 'reviews';
 
 type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
-type LiveEvent = TelemetryEventRead & { risk_score?: number; anomaly_score?: number; confidence?: number; detection_source?: string };
-type RealtimeRemediation = { action: string; device_id?: string; alert_id?: string; received_at: string };
 
 const navItems = [
   { id: 'overview', label: 'Overview', icon: Home, group: 'Command' },
@@ -274,7 +273,7 @@ function App() {
       case 'telemetry':
         return <TelemetryPanel events={filteredTelem} eventForm={eventForm} setEventForm={setEventForm} onSubmit={handleSubmitEvent} submission={eventSubmission} />;
       case 'graph':
-        return <GraphPanel graph={graph} />;
+        return <AttackGraph graph={graph} liveEvents={liveEvents} lastAlert={lastAlert} remediations={remediationActivity} reviews={reviews} />;
       case 'honeytokens':
         return <HoneytokenPanel tokens={honeytokens} onDeploy={async (payload) => { const next = await deployHoneytoken(payload); setHoneytokens((prev) => [next, ...prev]); }} onTrigger={async (tokenId) => { const next = await triggerHoneytoken(tokenId); setHoneytokens((prev) => prev.map((token) => token.id === next.honeytoken.id ? next.honeytoken : token)); }} />;
       case 'simulation':
@@ -284,7 +283,7 @@ function App() {
       case 'reviews':
         return <ReviewPanel reviews={reviews} loading={reviewsLoading} error={reviewsError} onRefresh={async () => { setReviewsLoading(true); setReviewsError(null); try { setReviews(await listReviews()); } catch (error) { setReviewsError(error instanceof Error ? error.message : 'Reviews could not be loaded'); } finally { setReviewsLoading(false); } }} onDecision={async (reviewId, action, comment) => { const next = await decideReview(reviewId, action, comment); setReviews((prev) => prev.map((entry) => entry.id === next.id ? next : entry)); setReviews(await listReviews()); }} userRole={authUser?.role} />;
       default:
-        return <OverviewPanel health={health} graph={graph} honeytokens={honeytokens} liveEvents={liveEvents} lastAlert={lastAlert} topRisk={topRisk} simulation={simulation} remediationActivity={remediationActivity} />;
+        return <OverviewPanel health={health} graph={graph} honeytokens={honeytokens} liveEvents={liveEvents} lastAlert={lastAlert} topRisk={topRisk} simulation={simulation} remediationActivity={remediationActivity} reviews={reviews} />;
     }
   })();
 
@@ -361,7 +360,7 @@ function App() {
   );
 }
 
-function OverviewPanel({ health, graph, honeytokens, liveEvents, lastAlert, topRisk, simulation, remediationActivity }: { health: HealthRead | null; graph: GraphRead | null; honeytokens: HoneytokenRead[]; liveEvents: LiveEvent[]; lastAlert: AlertRead | null; topRisk: number | null; simulation: SimulationStatusRead | null; remediationActivity: RealtimeRemediation[]; }) {
+function OverviewPanel({ health, graph, honeytokens, liveEvents, lastAlert, topRisk, simulation, remediationActivity, reviews }: { health: HealthRead | null; graph: GraphRead | null; honeytokens: HoneytokenRead[]; liveEvents: LiveEvent[]; lastAlert: AlertRead | null; topRisk: number | null; simulation: SimulationStatusRead | null; remediationActivity: RealtimeRemediation[]; reviews: HumanReviewRead[]; }) {
   const severityCounts = liveEvents.reduce<Record<string, number>>((counts, event) => {
     const severity = getEventSeverity(event);
     counts[severity] = (counts[severity] ?? 0) + 1;
@@ -467,7 +466,7 @@ function OverviewPanel({ health, graph, honeytokens, liveEvents, lastAlert, topR
         </Panel>
 
         <Panel title="Attack graph preview">
-          <GraphPreview graph={graph} />
+          <AttackGraphPreview graph={graph} liveEvents={liveEvents} lastAlert={lastAlert} remediations={remediationActivity} reviews={reviews} />
         </Panel>
 
         <Panel title="Honeytoken activity">
@@ -592,57 +591,6 @@ function TelemetryPanel({ events, eventForm, setEventForm, onSubmit, submission 
         </table>
       </div>
       {selectedEvent ? <div className="detail-drawer telemetry-detail"><div className="row-between"><div><span className="eyebrow">Event detail</span><h3>{selectedEvent.event_type}</h3></div><button className="icon-btn" onClick={() => setSelectedEvent(null)} aria-label="Close event details"><X size={15} /></button></div><div className="detail-grid"><span>Risk <strong>{selectedEvent.risk_score === undefined ? 'unscored' : `${Math.round(selectedEvent.risk_score)} / 100`}</strong></span><span>Status <strong>{selectedEvent.status}</strong></span><span>User <strong className="mono">{selectedEvent.user}</strong></span><span>Source <strong className="mono">{selectedEvent.source}</strong></span><span>Destination <strong className="mono">{selectedEvent.destination}</strong></span><span>Timestamp <strong className="mono">{new Date(selectedEvent.timestamp).toLocaleString()}</strong></span></div></div> : null}
-    </Panel>
-  );
-}
-
-function GraphPanel({ graph }: { graph: GraphRead | null }) {
-  const nodes = graph?.nodes ?? [];
-  const edges = graph?.edges ?? [];
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [neighbors, setNeighbors] = useState<GraphRead['nodes']>([]);
-  const [neighborState, setNeighborState] = useState<'idle' | 'loading' | 'error'>('idle');
-  const selected = nodes.find((node) => node.id === selectedId);
-
-  const selectNode = async (nodeId: string) => {
-    setSelectedId(nodeId);
-    setNeighborState('loading');
-    try {
-      setNeighbors(await getGraphNeighbors(nodeId));
-      setNeighborState('idle');
-    } catch {
-      setNeighbors([]);
-      setNeighborState('error');
-    }
-  };
-
-  return (
-    <Panel title="Attack graph">
-      <div className="graph-toolbar">
-        <div><span className="eyebrow">Entity relationship map</span><span className="graph-count">{nodes.length} nodes / {edges.length} edges</span></div>
-        {selected ? <span className="chip">Focused: {selected.data.label}</span> : <span className="chip neutral">Select an entity</span>}
-      </div>
-      <div className="graph-stage interactive">
-        <svg viewBox="0 0 1250 600" role="img" aria-label="Threat graph">
-          {edges.map((edge) => {
-            const src = nodes.find((node) => node.id === edge.source);
-            const dst = nodes.find((node) => node.id === edge.target);
-            if (!src || !dst) return null;
-            return (
-              <line key={edge.id} x1={src.position.x + 45} y1={src.position.y + 20} x2={dst.position.x + 45} y2={dst.position.y + 20} stroke="rgba(173,198,255,0.45)" strokeWidth={1.8} />
-            );
-          })}
-          {nodes.map((node) => (
-            <g key={node.id} className={selectedId === node.id ? 'graph-node selected' : 'graph-node'} transform={`translate(${node.position.x}, ${node.position.y})`} onClick={() => void selectNode(node.id)} tabIndex={0} role="button" aria-label={`Select ${node.data.label}`} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') void selectNode(node.id); }}>
-              <circle r={selectedId === node.id ? 31 : 26} fill={node.data.risk_score > 80 ? '#ff7b72' : node.data.risk_score > 55 ? '#fbbf24' : '#7dd3fc'} opacity={0.9} />
-              <text x={0} y={44} textAnchor="middle" fill="#e2e2e8" fontSize="10">{node.data.label}</text>
-            </g>
-          ))}
-        </svg>
-      </div>
-      <div className="graph-detail">
-        {selected ? <><div className="row-between"><div><span className="eyebrow">Selected entity</span><strong>{selected.data.label}</strong></div><span className={`severity-pill ${riskClass(selected.data.risk_score)}`}>{Math.round(selected.data.risk_score)} risk</span></div><div className="detail-meta mono">{selected.data.entity_type} · {selected.data.entity}</div><div className="neighbor-list"><span className="eyebrow">Neighbors</span>{neighborState === 'loading' ? <LoaderCircle className="spin" size={15} /> : neighborState === 'error' ? <span className="muted">Neighbor lookup unavailable</span> : neighbors.length ? neighbors.map((node) => <button key={node.id} className="chip" onClick={() => void selectNode(node.id)}>{node.data.label}</button>) : <span className="muted">No connected entities</span>}</div></> : <div className="empty-box">Select a node to inspect its real relationships</div>}
-      </div>
     </Panel>
   );
 }
@@ -877,19 +825,6 @@ function MetricCard({ icon, label, value, status }: { icon: React.ReactNode; lab
 function StatusPill({ status, ok }: { status?: 'healthy' | 'degraded' | 'unavailable' | 'unknown'; ok?: boolean }) {
   const resolved = status ?? (ok ? 'healthy' : 'unavailable');
   return <span className={`status-pill inline ${resolved === 'healthy' ? 'success' : resolved === 'degraded' ? 'warn' : 'neutral'}`}><span className={`status-dot ${resolved === 'healthy' ? 'status-healthy' : resolved === 'degraded' ? 'status-warn' : 'status-alert'}`} /> {resolved}</span>;
-}
-
-function GraphPreview({ graph }: { graph: GraphRead | null }) {
-  const nodes = graph?.nodes.slice(0, 6) ?? [];
-  return (
-    <div className="mini-graph">
-      {nodes.map((node, index) => (
-        <div key={node.id} className="mini-node" style={{ left: `${10 + index * 18}%`, top: `${20 + (index % 3) * 22}%` }}>
-          <span>{node.data.label.slice(0, 3)}</span>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 function AuthLoading() {

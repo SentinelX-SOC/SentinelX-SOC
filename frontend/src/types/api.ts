@@ -293,6 +293,20 @@ export interface SimulationStatusRead {
   workspace_id: string;
 }
 
+export type LiveEvent = TelemetryEventRead & {
+  risk_score?: number;
+  anomaly_score?: number;
+  confidence?: number;
+  detection_source?: string;
+};
+
+export interface RealtimeRemediation {
+  action: string;
+  device_id?: string;
+  alert_id?: string;
+  received_at: string;
+}
+
 export interface WebSocketEvent {
   type: 'telemetry' | 'alert' | 'graph' | 'honeytoken_triggered' | 'remediation_executed';
   payload?: TelemetryEventRead | AlertRead | GraphRead | unknown;
