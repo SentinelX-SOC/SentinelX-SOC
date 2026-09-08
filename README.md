@@ -23,12 +23,8 @@ The product goal is not another alert dump. It is an AI-native SOC workstation: 
 ---
 
 ## Core Contributors
-
-| Contributor | Role |
-| --- | --- |
-| **Mansi Tyagi** | Core contributor — SOC platform, detection pipeline, and product architecture |
-| **Mansi Singh** | Core contributor — SOC platform, investigation workflows, and product architecture |
-
+| **Mansi Tyagi** | 
+| **Mansi Singh** |
 ---
 
 ## Key Architectural Features
