@@ -805,6 +805,14 @@
   grid-template-columns: minmax(0, 1fr) 320px;
   gap: 14px;
   align-items: stretch;
+  flex: 1;
+  min-height: 0;
+}
+
+.attack-graph-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .text-btn {
@@ -1064,11 +1072,23 @@ table tbody tr:hover {
 }
 
 .attack-canvas {
-  min-height: 380px;
+  align-items: flex-start;
+  min-height: 0;
+  max-height: min(72vh, 720px);
+  padding: 32px 16px;
+  overflow: auto;
 }
 
 .graph-stage.interactive svg {
   height: 420px;
+}
+
+.graph-stage.interactive.attack-canvas svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 480px;
+  overflow: visible;
 }
 
 .graph-node {
@@ -1175,8 +1195,10 @@ table tbody tr:hover {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-height: 380px;
+  min-height: 0;
+  max-height: min(72vh, 720px);
   padding: 16px;
+  overflow: auto;
   border-left: 2px solid var(--primary);
   border-radius: 10px;
   background: rgba(40, 42, 46, 0.88);

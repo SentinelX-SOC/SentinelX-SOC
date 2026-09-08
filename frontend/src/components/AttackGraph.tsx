@@ -37,7 +37,7 @@ export function AttackGraph({
   const [neighbors, setNeighbors] = useState<GraphNodeRead[]>([]);
   const [neighborState, setNeighborState] = useState<'idle' | 'loading' | 'error'>('idle');
 
-  const positions = useMemo(() => layoutAttackGraph(nodes), [nodes]);
+  const { positions, height: canvasHeight } = useMemo(() => layoutAttackGraph(nodes), [nodes]);
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const selected = nodes.find((node) => node.id === selectedId) ?? null;
   const selectedRole = selected ? attackRoleForNode(selected) : null;
@@ -58,7 +58,7 @@ export function AttackGraph({
   };
 
   return (
-    <section className="panel">
+    <section className="panel attack-graph-panel">
       <div className="panel-header">
         <h3>Attack graph</h3>
         <ChevronRight size={16} />
@@ -76,9 +76,9 @@ export function AttackGraph({
       </div>
       <div className="attack-graph-shell">
         <div className="graph-stage interactive attack-canvas">
-          <svg viewBox={`0 0 ${GRAPH_VIEW.width} ${GRAPH_VIEW.height}`} role="img" aria-label="Attack graph">
+          <svg viewBox={`0 0 ${GRAPH_VIEW.width} ${canvasHeight}`} role="img" aria-label="Attack graph">
             {STAGE_ROLES.map((role) => (
-              <text key={role} x={ROLE_X[role]} y={36} textAnchor="middle" className="graph-stage-label">
+              <text key={role} x={ROLE_X[role]} y={56} textAnchor="middle" className="graph-stage-label">
                 {ATTACK_ROLE_LABEL[role]}
               </text>
             ))}
@@ -88,9 +88,9 @@ export function AttackGraph({
                   key={`${role}-rail`}
                   className="graph-stage-rail"
                   x1={ROLE_X[role] + 48}
-                  y1={48}
+                  y1={68}
                   x2={ROLE_X[STAGE_ROLES[index + 1]] - 48}
-                  y2={48}
+                  y2={68}
                 />
               ) : null
             ))}
@@ -113,7 +113,7 @@ export function AttackGraph({
               );
             })}
             {nodes.length === 0 ? STAGE_ROLES.map((role) => (
-              <g key={role} className="graph-node idle placeholder" transform={`translate(${ROLE_X[role]}, 220)`}>
+              <g key={role} className="graph-node idle placeholder" transform={`translate(${ROLE_X[role]}, ${220 + GRAPH_VIEW.padY})`}>
                 <circle className="node-ring" r={30} />
                 <circle className="node-core" r={22} />
                 <text x={0} y={52} textAnchor="middle">{ATTACK_ROLE_LABEL[role]}</text>

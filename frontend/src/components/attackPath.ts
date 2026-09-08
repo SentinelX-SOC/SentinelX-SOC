@@ -18,7 +18,7 @@ export const ATTACK_ROLE_LABEL: Record<AttackRole, string> = {
   crown_jewel: 'Crown Jewel',
 };
 
-export const GRAPH_VIEW = { width: 1100, height: 540 };
+export const GRAPH_VIEW = { width: 1100, height: 620, padY: 48 };
 export const ROLE_X: Record<AttackRole, number> = {
   entry_point: 160,
   internal_server: 550,
@@ -59,7 +59,7 @@ export function attackRoleForNode(node: GraphNodeRead): AttackRole {
   return 'entry_point';
 }
 
-export function layoutAttackGraph(nodes: GraphNodeRead[]): Map<string, Position> {
+export function layoutAttackGraph(nodes: GraphNodeRead[]): { positions: Map<string, Position>; height: number } {
   const buckets: Record<AttackRole, GraphNodeRead[]> = {
     entry_point: [],
     internal_server: [],
@@ -69,14 +69,20 @@ export function layoutAttackGraph(nodes: GraphNodeRead[]): Map<string, Position>
     buckets[attackRoleForNode(node)].push(node);
   }
   const positions = new Map<string, Position>();
+  const startY = 120 + GRAPH_VIEW.padY;
+  let maxY = startY;
   (Object.keys(buckets) as AttackRole[]).forEach((role) => {
     const column = buckets[role];
-    const gap = column.length > 1 ? Math.min(92, Math.max(64, (GRAPH_VIEW.height - 140) / column.length)) : 88;
     column.forEach((node, index) => {
-      positions.set(node.id, { x: ROLE_X[role], y: 110 + index * gap });
+      const y = startY + index * 88;
+      positions.set(node.id, { x: ROLE_X[role], y });
+      maxY = Math.max(maxY, y);
     });
   });
-  return positions;
+  return {
+    positions,
+    height: Math.max(GRAPH_VIEW.height, maxY + GRAPH_VIEW.padY + 80),
+  };
 }
 
 export function relatedEventsForNode(node: GraphNodeRead, events: LiveEvent[]): LiveEvent[] {
