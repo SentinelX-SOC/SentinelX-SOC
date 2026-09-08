@@ -37,7 +37,7 @@ export function AttackGraph({
   const [neighbors, setNeighbors] = useState<GraphNodeRead[]>([]);
   const [neighborState, setNeighborState] = useState<'idle' | 'loading' | 'error'>('idle');
 
-  const { positions, height: canvasHeight } = useMemo(() => layoutAttackGraph(nodes), [nodes]);
+  const { positions, width: canvasWidth, height: canvasHeight } = useMemo(() => layoutAttackGraph(nodes), [nodes]);
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const selected = nodes.find((node) => node.id === selectedId) ?? null;
   const selectedRole = selected ? attackRoleForNode(selected) : null;
@@ -76,7 +76,14 @@ export function AttackGraph({
       </div>
       <div className="attack-graph-shell">
         <div className="graph-stage interactive attack-canvas">
-          <svg viewBox={`0 0 ${GRAPH_VIEW.width} ${canvasHeight}`} role="img" aria-label="Attack graph">
+          <svg
+            width={canvasWidth}
+            height={canvasHeight}
+            viewBox={`0 0 ${canvasWidth} ${canvasHeight}`}
+            style={{ minWidth: canvasWidth, minHeight: canvasHeight }}
+            role="img"
+            aria-label="Attack graph"
+          >
             {STAGE_ROLES.map((role) => (
               <text key={role} x={ROLE_X[role]} y={56} textAnchor="middle" className="graph-stage-label">
                 {ATTACK_ROLE_LABEL[role]}

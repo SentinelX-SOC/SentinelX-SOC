@@ -59,7 +59,7 @@ export function attackRoleForNode(node: GraphNodeRead): AttackRole {
   return 'entry_point';
 }
 
-export function layoutAttackGraph(nodes: GraphNodeRead[]): { positions: Map<string, Position>; height: number } {
+export function layoutAttackGraph(nodes: GraphNodeRead[]): { positions: Map<string, Position>; width: number; height: number } {
   const buckets: Record<AttackRole, GraphNodeRead[]> = {
     entry_point: [],
     internal_server: [],
@@ -70,17 +70,21 @@ export function layoutAttackGraph(nodes: GraphNodeRead[]): { positions: Map<stri
   }
   const positions = new Map<string, Position>();
   const startY = 120 + GRAPH_VIEW.padY;
+  let maxX = GRAPH_VIEW.width;
   let maxY = startY;
   (Object.keys(buckets) as AttackRole[]).forEach((role) => {
     const column = buckets[role];
     column.forEach((node, index) => {
+      const x = ROLE_X[role];
       const y = startY + index * 88;
-      positions.set(node.id, { x: ROLE_X[role], y });
+      positions.set(node.id, { x, y });
+      maxX = Math.max(maxX, x + 160);
       maxY = Math.max(maxY, y);
     });
   });
   return {
     positions,
+    width: Math.max(GRAPH_VIEW.width, maxX + GRAPH_VIEW.padY),
     height: Math.max(GRAPH_VIEW.height, maxY + GRAPH_VIEW.padY + 80),
   };
 }
